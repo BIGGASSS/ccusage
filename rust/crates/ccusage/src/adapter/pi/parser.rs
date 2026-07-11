@@ -5,9 +5,10 @@ use serde::Deserialize;
 
 use super::super::jsonl;
 use crate::{
-    LoadedEntry, Pricing, PricingMap, Result, TokenUsageRaw, UsageEntry, UsageMessage,
+    LoadedEntry, Pricing, PricingMap, Result, TimestampMs, TokenUsageRaw, UsageEntry, UsageMessage,
     apply_total_token_fallback, calculate_cost_for_usage, calculate_cost_from_pricing,
-    cli::CostMode, fast::LinePrefilter, format_date_tz, missing_pricing_model_for_usage,
+    cli::CostMode, fast::LinePrefilter, format_date_tz, format_rfc3339_millis,
+    missing_pricing_model_for_usage,
 };
 
 /// A single parsed pi session record. Only the fields ccusage consumes are
@@ -29,6 +30,72 @@ struct PiMessage {
     #[serde(default, deserialize_with = "jsonl::non_empty_string")]
     model: Option<String>,
     usage: Option<PiUsage>,
+    #[serde(
+        rename = "toolName",
+        default,
+        deserialize_with = "jsonl::non_empty_string"
+    )]
+    tool_name: Option<String>,
+    #[serde(
+        rename = "toolCallId",
+        default,
+        deserialize_with = "jsonl::non_empty_string"
+    )]
+    tool_call_id: Option<String>,
+    #[serde(default, deserialize_with = "jsonl::lenient_object")]
+    details: Option<PiSubagentDetails>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+struct PiSubagentDetails {
+    #[serde(default, deserialize_with = "jsonl::lenient_vec")]
+    results: Vec<PiSubagentResult>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+struct PiSubagentResult {
+    #[serde(default, deserialize_with = "jsonl::non_empty_string")]
+    model: Option<String>,
+    #[serde(default, deserialize_with = "jsonl::lenient_object")]
+    usage: Option<PiAggregateUsage>,
+    #[serde(default, deserialize_with = "jsonl::lenient_vec")]
+    messages: Vec<PiSubagentMessage>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+struct PiSubagentMessage {
+    #[serde(default, deserialize_with = "jsonl::non_empty_string")]
+    role: Option<String>,
+    #[serde(default, deserialize_with = "jsonl::non_empty_string")]
+    model: Option<String>,
+    #[serde(default, deserialize_with = "jsonl::lenient_i64")]
+    timestamp: Option<i64>,
+    #[serde(default, deserialize_with = "jsonl::lenient_object")]
+    usage: Option<PiUsage>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+struct PiAggregateUsage {
+    #[serde(default, deserialize_with = "jsonl::lenient_u64")]
+    input: u64,
+    #[serde(default, deserialize_with = "jsonl::lenient_u64")]
+    output: u64,
+    #[serde(rename = "cacheRead", default, deserialize_with = "jsonl::lenient_u64")]
+    cache_read: u64,
+    #[serde(
+        rename = "cacheWrite",
+        default,
+        deserialize_with = "jsonl::lenient_u64"
+    )]
+    cache_write: u64,
+    #[serde(
+        rename = "totalTokens",
+        default,
+        deserialize_with = "jsonl::lenient_u64"
+    )]
+    total_tokens: u64,
+    #[serde(default, deserialize_with = "jsonl::lenient_f64")]
+    cost: Option<f64>,
 }
 
 /// Token counts and optional display cost carried by a pi assistant message.
@@ -175,104 +242,217 @@ fn read_session_file_with_context(
     let mut entries = Vec::new();
 
     for record in jsonl::records::<PiLine>(&content, Some(&prefilter)) {
-        if !is_pi_message_usage(&record) {
+        if record
+            .r#type
+            .as_deref()
+            .is_some_and(|message_type| message_type != "message")
+        {
             continue;
         }
-        let Some(timestamp_text) = record.timestamp.clone() else {
-            continue;
-        };
-        let Some(timestamp) = crate::parse_ts_timestamp(&timestamp_text) else {
-            continue;
-        };
         let Some(message) = record.message.as_ref() else {
             continue;
         };
-        let Some(usage_value) = message.usage.as_ref() else {
-            continue;
-        };
-        let input = usage_value.input;
-        let output = usage_value.output;
-        let cache_read = usage_value.cache_read;
-        let cache_create = usage_value.cache_write;
-        let total = usage_value.total_tokens;
-        let usage = TokenUsageRaw {
-            input_tokens: input,
-            output_tokens: output,
-            cache_creation_input_tokens: cache_create,
-            cache_read_input_tokens: cache_read,
-            speed: None,
-            cache_creation: None,
-        };
-        let (usage, extra_total_tokens) = apply_total_token_fallback(usage, 0, total);
-        if crate::total_usage_tokens(usage) + extra_total_tokens == 0 {
+        if message.role.as_deref() == Some("assistant") {
+            let Some(record_timestamp_text) = record.timestamp.as_deref() else {
+                continue;
+            };
+            let Some(record_timestamp) = crate::parse_ts_timestamp(record_timestamp_text) else {
+                continue;
+            };
+            if let Some(usage) = message.usage.as_ref() {
+                push_entry(
+                    &mut entries,
+                    &project,
+                    &session_id,
+                    record_timestamp_text.to_string(),
+                    record_timestamp,
+                    message.model.as_deref(),
+                    usage,
+                    usage.cost.as_ref().and_then(|cost| cost.total),
+                    None,
+                    tz,
+                    mode,
+                    pricing,
+                    context,
+                );
+            }
             continue;
         }
-        let raw_model = message.model.clone();
-        let model = raw_model
-            .as_ref()
-            .map(|model| format!("[{}] {model}", context.store_name()));
-        let display_cost = usage_value.cost.as_ref().and_then(|cost| cost.total);
-        let cost = context.cost(
-            raw_model.as_deref(),
-            model.as_deref(),
-            usage,
-            display_cost,
-            mode,
-            pricing,
-        );
-        let missing_pricing_model = context.missing_pricing_model(
-            raw_model.as_deref(),
-            model.as_deref(),
-            usage,
-            display_cost,
-            mode,
-            pricing,
-        );
-        let data = UsageEntry {
-            session_id: Some(session_id.clone()),
-            timestamp: timestamp_text,
-            version: None,
-            message: UsageMessage {
-                usage,
-                model: model.clone(),
-                id: None,
-            },
-            cost_usd: display_cost,
-            request_id: None,
-            is_api_error_message: None,
-            is_sidechain: None,
+
+        if message.role.as_deref() != Some("toolResult")
+            || message.tool_name.as_deref() != Some("subagent")
+        {
+            continue;
+        }
+        let Some(details) = message.details.as_ref() else {
+            continue;
         };
-        entries.push(LoadedEntry {
-            date: format_date_tz(timestamp, tz),
-            timestamp,
-            project: Arc::from(project.as_str()),
-            session_id: Arc::from(session_id.as_str()),
-            project_path: Arc::from(project.as_str()),
-            cost,
-            extra_total_tokens,
-            credits: None,
-            message_count: None,
-            model,
-            data,
-            usage_limit_reset_time: None,
-            missing_pricing_model,
-        });
+        let call_identity = message
+            .tool_call_id
+            .as_deref()
+            .or(record.timestamp.as_deref())
+            .unwrap_or_default();
+        for (result_index, result) in details.results.iter().enumerate() {
+            let mut usable_nested_messages = 0;
+            for (message_index, nested) in result.messages.iter().enumerate() {
+                if nested.role.as_deref() != Some("assistant") {
+                    continue;
+                }
+                let (Some(timestamp_millis), Some(usage)) =
+                    (nested.timestamp, nested.usage.as_ref())
+                else {
+                    continue;
+                };
+                if jiff::Timestamp::from_millisecond(timestamp_millis).is_err() {
+                    continue;
+                }
+                let timestamp = TimestampMs::from_millis(timestamp_millis);
+                let request_id = format!("subagent:{call_identity}:{result_index}:{message_index}");
+                if push_entry(
+                    &mut entries,
+                    &project,
+                    &session_id,
+                    format_rfc3339_millis(timestamp),
+                    timestamp,
+                    nested
+                        .model
+                        .as_deref()
+                        .or_else(|| result.model.as_deref().map(subagent_result_model)),
+                    usage,
+                    usage.cost.as_ref().and_then(|cost| cost.total),
+                    Some(request_id),
+                    tz,
+                    mode,
+                    pricing,
+                    context,
+                ) {
+                    usable_nested_messages += 1;
+                }
+            }
+            if usable_nested_messages > 0 {
+                continue;
+            }
+            let Some(aggregate) = result.usage.as_ref() else {
+                continue;
+            };
+            let Some(record_timestamp_text) = record.timestamp.as_deref() else {
+                continue;
+            };
+            let Some(record_timestamp) = crate::parse_ts_timestamp(record_timestamp_text) else {
+                continue;
+            };
+            let usage = PiUsage {
+                input: aggregate.input,
+                output: aggregate.output,
+                cache_read: aggregate.cache_read,
+                cache_write: aggregate.cache_write,
+                total_tokens: aggregate.total_tokens,
+                cost: None,
+            };
+            push_entry(
+                &mut entries,
+                &project,
+                &session_id,
+                record_timestamp_text.to_string(),
+                record_timestamp,
+                result.model.as_deref().map(subagent_result_model),
+                &usage,
+                aggregate.cost,
+                Some(format!("subagent:{call_identity}:{result_index}:aggregate")),
+                tz,
+                mode,
+                pricing,
+                context,
+            );
+        }
     }
     Ok(entries)
 }
 
-fn is_pi_message_usage(record: &PiLine) -> bool {
-    if record
-        .r#type
-        .as_deref()
-        .is_some_and(|message_type| message_type != "message")
-    {
+fn subagent_result_model(model: &str) -> &str {
+    model
+        .rsplit_once('/')
+        .map(|(_, model_name)| model_name)
+        .filter(|model_name| !model_name.is_empty())
+        .unwrap_or(model)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn push_entry(
+    entries: &mut Vec<LoadedEntry>,
+    project: &str,
+    session_id: &str,
+    timestamp_text: String,
+    timestamp: TimestampMs,
+    raw_model: Option<&str>,
+    usage_value: &PiUsage,
+    display_cost: Option<f64>,
+    request_id: Option<String>,
+    tz: Option<&JiffTimeZone>,
+    mode: CostMode,
+    pricing: Option<&PricingMap>,
+    context: PiStoreContext<'_>,
+) -> bool {
+    let usage = TokenUsageRaw {
+        input_tokens: usage_value.input,
+        output_tokens: usage_value.output,
+        cache_creation_input_tokens: usage_value.cache_write,
+        cache_read_input_tokens: usage_value.cache_read,
+        speed: None,
+        cache_creation: None,
+    };
+    let (usage, extra_total_tokens) =
+        apply_total_token_fallback(usage, 0, usage_value.total_tokens);
+    if crate::total_usage_tokens(usage) + extra_total_tokens == 0 {
         return false;
     }
-    let Some(message) = record.message.as_ref() else {
-        return false;
+    let model = raw_model.map(|model| format!("[{}] {model}", context.store_name()));
+    let cost = context.cost(
+        raw_model,
+        model.as_deref(),
+        usage,
+        display_cost,
+        mode,
+        pricing,
+    );
+    let missing_pricing_model = context.missing_pricing_model(
+        raw_model,
+        model.as_deref(),
+        usage,
+        display_cost,
+        mode,
+        pricing,
+    );
+    let data = UsageEntry {
+        session_id: Some(session_id.to_string()),
+        timestamp: timestamp_text,
+        version: None,
+        message: UsageMessage {
+            usage,
+            model: model.clone(),
+            id: None,
+        },
+        cost_usd: display_cost,
+        request_id,
+        is_api_error_message: None,
+        is_sidechain: None,
     };
-    message.role.as_deref() == Some("assistant") && message.usage.is_some()
+    entries.push(LoadedEntry {
+        date: format_date_tz(timestamp, tz),
+        timestamp,
+        project: Arc::from(project),
+        session_id: Arc::from(session_id),
+        project_path: Arc::from(project),
+        cost,
+        extra_total_tokens,
+        credits: None,
+        message_count: None,
+        model,
+        data,
+        usage_limit_reset_time: None,
+        missing_pricing_model,
+    });
+    true
 }
 
 fn extract_session_id(path: &Path) -> String {
@@ -380,6 +560,7 @@ pub(super) fn entry_id_for_store(store_name: &str, entry: &LoadedEntry) -> Strin
         entry.session_id.as_ref(),
         entry.data.timestamp.as_str(),
         entry.model.as_deref().unwrap_or_default(),
+        entry.data.request_id.as_deref().unwrap_or_default(),
         &entry.data.message.usage.input_tokens.to_string(),
         &entry.data.message.usage.output_tokens.to_string(),
         &entry
@@ -399,6 +580,198 @@ pub(super) fn entry_id_for_store(store_name: &str, entry: &LoadedEntry) -> Strin
 mod tests {
     use super::*;
     use ccusage_test_support::fs_fixture;
+
+    fn fixture_file(
+        fixture: &ccusage_test_support::Fixture,
+        name: &str,
+        content: &str,
+    ) -> std::path::PathBuf {
+        let path = format!("sessions/project-a/{name}");
+        let _ = fixture.write_file(&path, content);
+        fixture.path(path)
+    }
+
+    #[test]
+    fn includes_parallel_nested_subagent_messages_without_aggregate_double_counting() {
+        let fixture = fs_fixture!({});
+        let file = fixture_file(
+            &fixture,
+            "agent_session-a.jsonl",
+            include_str!("fixtures/subagent-nested.jsonl"),
+        );
+
+        let entries = read_session_file(&file, None, CostMode::Display, None).unwrap();
+
+        assert_eq!(entries.len(), 4);
+        assert_eq!(
+            entries
+                .iter()
+                .map(|entry| entry.data.message.usage.input_tokens)
+                .sum::<u64>(),
+            410
+        );
+        assert_eq!(
+            entries
+                .iter()
+                .map(|entry| entry.data.message.usage.output_tokens)
+                .sum::<u64>(),
+            60
+        );
+        assert_eq!(
+            entries
+                .iter()
+                .map(|entry| entry.data.message.usage.cache_read_input_tokens)
+                .sum::<u64>(),
+            4_030
+        );
+        assert_eq!(
+            entries
+                .iter()
+                .map(|entry| entry.data.message.usage.cache_creation_input_tokens)
+                .sum::<u64>(),
+            44
+        );
+        assert!((entries.iter().map(|entry| entry.cost).sum::<f64>() - 0.8).abs() < 1e-12);
+    }
+
+    #[test]
+    fn keeps_parallel_subagent_messages_with_identical_usage_distinct() {
+        let fixture = fs_fixture!({});
+        let file = fixture_file(
+            &fixture,
+            "agent_session-a.jsonl",
+            include_str!("fixtures/subagent-nested.jsonl"),
+        );
+
+        let entries = read_session_file(&file, None, CostMode::Display, None).unwrap();
+        let identical = entries
+            .iter()
+            .filter(|entry| entry.data.message.usage.input_tokens == 100)
+            .collect::<Vec<_>>();
+
+        assert_eq!(identical.len(), 2);
+        assert_ne!(entry_id(identical[0]), entry_id(identical[1]));
+    }
+
+    #[test]
+    fn uses_nested_subagent_timestamps_for_date_grouping() {
+        let fixture = fs_fixture!({});
+        let file = fixture_file(
+            &fixture,
+            "agent_session-a.jsonl",
+            include_str!("fixtures/subagent-nested.jsonl"),
+        );
+
+        let tz = crate::parse_tz(Some("America/Los_Angeles"));
+        let entries = read_session_file(&file, tz.as_ref(), CostMode::Display, None).unwrap();
+        let dates = entries
+            .iter()
+            .map(|entry| entry.date.as_str())
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            dates,
+            ["2026-01-01", "2026-01-02", "2026-01-03", "2026-01-02"]
+        );
+    }
+
+    #[test]
+    fn keeps_nested_subagent_usage_when_the_tool_result_timestamp_is_invalid() {
+        let fixture = fs_fixture!({
+            "sessions/project-a/agent_session-a.jsonl": r#"{"type":"message","timestamp":"not-a-timestamp","message":{"role":"toolResult","toolName":"subagent","toolCallId":"call-a","details":{"results":[{"model":"provider/gpt-sub","usage":{"input":999,"output":999,"cost":9.99},"messages":[{"role":"assistant","timestamp":1767398400000,"model":"gpt-sub","usage":{"input":25,"output":5,"cost":{"total":0.2}}}]}]}}}"#,
+        });
+        let file = fixture.path("sessions/project-a/agent_session-a.jsonl");
+
+        let entries = read_session_file(&file, None, CostMode::Display, None).unwrap();
+
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].data.message.usage.input_tokens, 25);
+        assert_eq!(entries[0].data.message.usage.output_tokens, 5);
+        assert_eq!(entries[0].cost, 0.2);
+        assert_eq!(entries[0].data.timestamp, "2026-01-03T00:00:00.000Z");
+    }
+
+    #[test]
+    fn falls_back_to_subagent_aggregate_when_nested_messages_are_unusable() {
+        let fixture = fs_fixture!({});
+        let file = fixture_file(
+            &fixture,
+            "agent_session-a.jsonl",
+            include_str!("fixtures/subagent-fallback.jsonl"),
+        );
+
+        let entries = read_session_file(&file, None, CostMode::Display, None).unwrap();
+
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].data.message.usage.input_tokens, 50);
+        assert_eq!(entries[0].data.message.usage.output_tokens, 5);
+        assert_eq!(entries[0].data.message.usage.cache_read_input_tokens, 500);
+        assert_eq!(entries[0].data.message.usage.cache_creation_input_tokens, 2);
+        assert_eq!(entries[0].cost, 0.4);
+        assert_eq!(entries[0].model.as_deref(), Some("[pi] gpt-fallback"));
+        assert_eq!(entries[0].data.timestamp, "2026-01-05T12:00:00.000Z");
+    }
+
+    #[test]
+    fn applies_cost_modes_to_each_subagent_request() {
+        let fixture = fs_fixture!({});
+        let file = fixture_file(
+            &fixture,
+            "agent_session-a.jsonl",
+            include_str!("fixtures/subagent-nested.jsonl"),
+        );
+        let mut pricing = PricingMap::default();
+        pricing.load_json(
+            r#"{
+                "[pi] gpt-parent": {
+                    "input_cost_per_token": 0.001,
+                    "output_cost_per_token": 0.002,
+                    "cache_read_input_token_cost": 0.0001,
+                    "cache_creation_input_token_cost": 0.0003
+                },
+                "[pi] gpt-sub": {
+                    "input_cost_per_token": 0.001,
+                    "output_cost_per_token": 0.002,
+                    "cache_read_input_token_cost": 0.0001,
+                    "cache_creation_input_token_cost": 0.0003
+                }
+            }"#,
+        );
+
+        let auto = read_session_file(&file, None, CostMode::Auto, Some(&pricing)).unwrap();
+        let display = read_session_file(&file, None, CostMode::Display, Some(&pricing)).unwrap();
+        let calculate =
+            read_session_file(&file, None, CostMode::Calculate, Some(&pricing)).unwrap();
+
+        assert!((auto.iter().map(|entry| entry.cost).sum::<f64>() - 0.8).abs() < 1e-12);
+        assert!((display.iter().map(|entry| entry.cost).sum::<f64>() - 0.8).abs() < 1e-12);
+        assert!((calculate.iter().map(|entry| entry.cost).sum::<f64>() - 0.9462).abs() < 1e-12);
+    }
+
+    #[test]
+    fn prefixes_subagent_models_for_named_stores() {
+        let fixture = fs_fixture!({});
+        let file = fixture_file(
+            &fixture,
+            "agent_session-a.jsonl",
+            include_str!("fixtures/subagent-nested.jsonl"),
+        );
+
+        let entries = read_session_file_for_store(
+            &file,
+            &fixture.path("sessions"),
+            None,
+            CostMode::Display,
+            None,
+            "omp",
+        )
+        .unwrap();
+
+        assert_eq!(entries.len(), 4);
+        assert_eq!(entries[1].model.as_deref(), Some("[omp] gpt-sub"));
+        assert_eq!(entries[2].model.as_deref(), Some("[omp] gpt-sub"));
+        assert_eq!(entries[3].model.as_deref(), Some("[omp] gpt-sub"));
+    }
 
     #[test]
     fn falls_back_to_total_tokens_when_pi_parts_are_missing() {

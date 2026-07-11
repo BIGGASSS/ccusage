@@ -4,7 +4,7 @@ ccusage can read [pi-agent](https://github.com/badlogic/pi-mono) usage data as o
 
 ## What is Pi-Agent?
 
-Pi-agent is a third-party Claude coding (agent) CLI that stores usage data in JSONL format. ccusage analyzes this data alongside its other supported sources.
+Pi-agent is a third-party Claude coding (agent) CLI that stores usage data in JSONL format. ccusage analyzes this data alongside its other supported sources. Reports include token usage and costs from pi subagents in their parent session without double-counting pi's aggregate subagent totals.
 
 ## Focused Views
 
