@@ -1,130 +1,29 @@
-use std::{fmt, io};
-
 mod adapter;
 mod blocks;
 mod cli;
 mod commands;
-mod config;
-mod config_schema;
-mod cost;
-mod date_utils;
-mod fast;
-mod home;
-mod logger;
-mod model_aliases;
-mod output;
-mod path_utils;
-mod pricing;
-mod progress;
-mod project_names;
-mod summary;
-mod types;
-mod utils;
+mod http;
 
-pub(crate) use adapter::claude::{
-    chunk_file_indexes_by_size, collect_files_with_extension, collect_usage_files,
-    filter_loaded_entries_by_date, load_daily_summaries, load_entries,
-};
-pub(crate) use adapter::read_files_parallel;
+pub(crate) use adapter::claude::{load_daily_summaries, load_entries};
+#[cfg(test)]
+pub(crate) use adapter::codex::CodexTokenUsageEvent;
 pub(crate) use blocks::{
     block_json, calculate_burn_rate, filter_blocks_by_date, format_remaining_time,
     identify_session_blocks, print_active_block_detail, print_blocks_table, sort_blocks,
 };
-pub(crate) use cost::{
-    calculate_cost, calculate_cost_for_usage, calculate_cost_from_pricing,
-    missing_pricing_model_for_candidates, missing_pricing_model_for_token_total,
-    missing_pricing_model_for_usage,
-};
-pub(crate) use date_utils::*;
-pub(crate) use logger::{debug_log, log_level};
-pub(crate) use output::{
-    format_currency, format_models_multiline, format_number, group_project_output, json_float,
-    print_json_or_jq, print_missing_pricing_warnings, print_missing_pricing_warnings_for_models,
-    print_usage_table, session_summary_json, should_use_compact_layout, summary_json, totals_json,
-    wants_json,
-};
-pub(crate) use project_names::{format_project_name, parse_project_aliases, short_model_name};
-pub(crate) use summary::{
-    BucketKind, SessionAccumulator, filter_and_sort_summaries, sort_summaries, summarize_by_key,
-    summarize_summaries_by_bucket, week_start,
-};
-pub(crate) use types::*;
-pub(crate) use utils::{
-    apply_total_token_fallback, json_value_u64, non_empty_json_string, total_usage_tokens,
-};
-
-pub(crate) use ccusage_terminal::{Align, Color, SimpleTable};
-use ccusage_terminal::{TerminalStyle, terminal_width};
+#[cfg(test)]
+pub(crate) use ccusage_adapter_common::chunk_file_indexes_by_size;
+pub(crate) use ccusage_core::*;
 use cli::{AgentCommandArgs, AgentReportKind, Command};
-use pricing::{Pricing, PricingMap};
+#[cfg(test)]
+use pricing::PricingMap;
 
 #[cfg(all(target_os = "linux", target_env = "musl"))]
 #[global_allocator]
 static GLOBAL_ALLOCATOR: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
-const DEFAULT_SESSION_DURATION_HOURS: f64 = 5.0;
-const DEFAULT_RECENT_DAYS: i64 = 3;
-const BLOCKS_WARNING_THRESHOLD: f64 = 0.8;
-const USAGE_COMPACT_WIDTH_THRESHOLD: usize = 100;
-const BLOCKS_COMPACT_WIDTH_THRESHOLD: usize = 120;
-
-type Result<T> = std::result::Result<T, CliError>;
-
-#[derive(Debug)]
-struct CliError(String);
-
-impl fmt::Display for CliError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(&self.0)
-    }
-}
-
-impl From<io::Error> for CliError {
-    fn from(error: io::Error) -> Self {
-        Self(error.to_string())
-    }
-}
-
-impl From<serde_json::Error> for CliError {
-    fn from(error: serde_json::Error) -> Self {
-        Self(error.to_string())
-    }
-}
-
-fn cli_error(message: impl Into<String>) -> CliError {
-    CliError(message.into())
-}
-
-fn terminal_style(shared: &cli::SharedArgs) -> TerminalStyle {
-    TerminalStyle {
-        color: shared.color,
-        log_level: log_level(),
-        no_color: shared.no_color,
-    }
-}
-
-fn color(shared: &cli::SharedArgs, value: impl AsRef<str>, color: Color) -> String {
-    ccusage_terminal::color(terminal_style(shared), value, color)
-}
-
-fn print_box_title(title: &str, shared: &cli::SharedArgs) {
-    ccusage_terminal::print_box_title(title, terminal_style(shared));
-}
-
-trait Context<T> {
-    fn context(self, message: impl Into<String>) -> Result<T>;
-}
-
-impl<T, E> Context<T> for std::result::Result<T, E>
-where
-    E: fmt::Display,
-{
-    fn context(self, message: impl Into<String>) -> Result<T> {
-        self.map_err(|error| cli_error(format!("{}: {error}", message.into())))
-    }
-}
-
 fn main() -> Result<()> {
+    pricing::set_json_fetcher(http::fetch_json);
     let cli = cli::parse();
     match cli.command {
         Some(Command::All(args)) => adapter::all::run(args),
@@ -146,8 +45,11 @@ fn main() -> Result<()> {
         Some(Command::Qwen(args)) => adapter::qwen::run(args),
         Some(Command::Copilot(args)) => adapter::copilot::run(args),
         Some(Command::Gemini(args)) => adapter::gemini::run(args),
+        Some(Command::Antigravity(args)) => adapter::antigravity::run(args),
         Some(Command::Kimi(args)) => adapter::kimi::run(args),
         Some(Command::OpenClaw(args)) => adapter::openclaw::run(args),
+        Some(Command::Grok(args)) => adapter::grok::run(args),
+        Some(Command::ZCode(args)) => adapter::zcode::run(args),
         None => {
             let args = AgentCommandArgs {
                 shared: cli.shared,
@@ -175,6 +77,49 @@ mod tests {
         cli::{CostMode, SharedArgs, SortOrder, WeekDay},
         cost::tiered_cost,
     };
+
+    #[test]
+    fn shared_usage_types_are_exposed_by_core_crate() {
+        assert_eq!(
+            std::any::type_name::<ccusage_core::TokenUsageRaw>(),
+            std::any::type_name::<TokenUsageRaw>()
+        );
+    }
+
+    #[test]
+    fn agent_commands_are_exposed_by_independent_crates() {
+        let runs: [fn(AgentCommandArgs) -> Result<()>; 17] = [
+            ccusage_adapter_amp::run,
+            ccusage_adapter_antigravity::run,
+            ccusage_adapter_codebuff::run,
+            ccusage_adapter_codex::run,
+            ccusage_adapter_copilot::run,
+            ccusage_adapter_droid::run,
+            ccusage_adapter_gemini::run,
+            ccusage_adapter_goose::run,
+            ccusage_adapter_grok::run,
+            ccusage_adapter_hermes::run,
+            ccusage_adapter_kilo::run,
+            ccusage_adapter_kimi::run,
+            ccusage_adapter_openclaw::run,
+            ccusage_adapter_opencode::run,
+            ccusage_adapter_pi::run,
+            ccusage_adapter_qwen::run,
+            ccusage_adapter_zcode::run,
+        ];
+
+        assert_eq!(runs.len(), 17);
+    }
+
+    #[test]
+    fn unified_command_is_exposed_by_independent_crate() {
+        let run: fn(AgentCommandArgs) -> Result<()> = ccusage_adapter_all::run;
+
+        assert_eq!(
+            std::mem::size_of_val(&run),
+            std::mem::size_of::<fn(AgentCommandArgs) -> Result<()>>()
+        );
+    }
 
     #[test]
     fn compiled_version_matches_release_package() {
@@ -337,7 +282,31 @@ mod tests {
     }
 
     #[test]
-    fn dedupes_usage_entries_by_message_id_without_request_id() {
+    fn keeps_reused_message_id_from_distinct_sessions_at_same_timestamp() {
+        let fixture = fs_fixture!({
+            "projects/project1/session1/chat.jsonl": r#"{"timestamp":"2025-01-10T10:00:00.000Z","message":{"id":"msg_123","model":"claude-opus-4-6","usage":{"input_tokens":100,"output_tokens":25,"cache_creation_input_tokens":10,"cache_read_input_tokens":5}},"costUSD":0.001}"#,
+            "projects/project1/session2/chat.jsonl": r#"{"timestamp":"2025-01-10T10:00:00.000Z","message":{"id":"msg_123","model":"claude-opus-4-6","usage":{"input_tokens":100,"output_tokens":250,"cache_creation_input_tokens":10,"cache_read_input_tokens":5,"speed":"standard"}},"costUSD":0.01}"#,
+        });
+
+        let _env = EnvVarGuard::set("CLAUDE_CONFIG_DIR", fixture.root());
+        let shared = SharedArgs {
+            mode: CostMode::Display,
+            ..SharedArgs::default()
+        };
+        let entries = load_entries(&shared, None).unwrap();
+
+        assert_eq!(entries.len(), 2);
+        assert_eq!(
+            entries
+                .iter()
+                .map(|entry| entry.data.message.usage.output_tokens)
+                .sum::<u64>(),
+            275
+        );
+    }
+
+    #[test]
+    fn dedupes_reused_message_id_from_same_session_without_request_id() {
         let fixture = fs_fixture!({
             "projects/project1/session1/chat.jsonl": [
                 r#"{"timestamp":"2025-01-10T10:00:00.000Z","message":{"id":"msg_123","model":"claude-opus-4-6","usage":{"input_tokens":100,"output_tokens":25,"cache_creation_input_tokens":10,"cache_read_input_tokens":5}},"costUSD":0.001}"#,
@@ -602,10 +571,12 @@ mod tests {
             model: Some("gpt-5".to_string()),
             input_tokens: 100,
             cached_input_tokens: 10,
+            cache_creation_tokens: 0,
             output_tokens: 50,
             reasoning_output_tokens: 0,
             total_tokens: 150,
             is_fallback_model: false,
+            service_tier: None,
         }];
 
         let report = adapter::codex::report_json(
@@ -643,10 +614,12 @@ mod tests {
             model: Some("gpt-5.3-codex".to_string()),
             input_tokens: 120,
             cached_input_tokens: 30,
+            cache_creation_tokens: 0,
             output_tokens: 11,
             reasoning_output_tokens: 3,
             total_tokens: 131,
             is_fallback_model: false,
+            service_tier: None,
         }];
 
         let report = adapter::codex::report_json(
@@ -680,10 +653,12 @@ mod tests {
             model: Some("gpt-test".to_string()),
             input_tokens: 10,
             cached_input_tokens: 2,
+            cache_creation_tokens: 0,
             output_tokens: 5,
             reasoning_output_tokens: 0,
             total_tokens: 15,
             is_fallback_model: false,
+            service_tier: None,
         }];
 
         let standard = adapter::codex::report_json(
@@ -716,10 +691,12 @@ mod tests {
             model: Some("gpt-5.4".to_string()),
             input_tokens: 100,
             cached_input_tokens: 40,
+            cache_creation_tokens: 0,
             output_tokens: 10,
             reasoning_output_tokens: 0,
             total_tokens: 110,
             is_fallback_model: false,
+            service_tier: None,
         }];
 
         let standard = adapter::codex::report_json(

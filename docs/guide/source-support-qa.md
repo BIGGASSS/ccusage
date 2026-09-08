@@ -19,26 +19,29 @@ Local transcript text alone is not enough. A transcript can be useful for debugg
 
 ## Unsupported Sources Investigated
 
-::: details Why is Antigravity CLI not supported?
-Antigravity CLI is separate from Gemini CLI. The Antigravity CLI binary is exposed as `agy`, and it stores state under `~/.gemini/antigravity-cli/`.
-
-The current local data has conversation files such as `conversations/<conversation-id>.pb`, plus lightweight history and cache JSON files. The `.pb` files are opaque binary payloads and do not expose readable token usage, model usage, or per-turn accounting without Antigravity's private schema and storage semantics.
-
-The CLI log files include operational events such as conversation creation, streaming, prompt length, auth, and model configuration messages. They do not include input, output, cache, or reasoning token counts. Quota-oriented tools can inspect remaining Antigravity quota, but quota snapshots are not the same as historical per-session token usage.
-
-Because the local files do not expose the token accounting needed for ccusage reports, Antigravity CLI is not supported right now.
-:::
-
-::: details Why is Grok CLI not supported?
-Grok CLI was investigated, but its local SQLite data did not contain usable token accounting. Without token counts, model usage, or recorded costs in the local database, ccusage has nothing reliable to aggregate.
-
-Estimating tokens from message text would ignore provider-side context, hidden prompts, tool-call payloads, cached input, and tokenizer differences, so ccusage does not do that.
-:::
-
 ::: details Why is Devin CLI not supported?
 Devin CLI usage information appears to live in Devin's cloud service rather than in a local usage log that ccusage can read. The locally available data did not provide direct access to historical token usage or costs.
 
 ccusage is a local, read-only analyzer. It does not scrape private cloud services or depend on undocumented authenticated APIs for user usage history. If Devin adds a local export with timestamps, sessions, models, and token counts, support can be revisited.
+:::
+
+## Previously Unsupported, Now Supported
+
+::: details Antigravity
+Antigravity is now supported as its own source. ccusage reads the local
+`gen_metadata` SQLite databases, keeps Antigravity separate from Gemini CLI,
+and maps the input, cache-read, visible-output, and thinking-token buckets into
+the standard report shape. See [Antigravity](/guide/antigravity/).
+:::
+
+::: details Grok Build CLI
+Earlier investigations looked at local Grok data that did not expose usable token
+accounting (for example SQLite without per-turn usage). Grok Build CLI is now
+supported: ccusage reads completed turns from
+`${GROK_HOME:-~/.grok}/sessions/**/updates.jsonl` (`sessionUpdate == "turn_completed"`
+with `usage` / `modelUsage`). Costs come from Grok's own `costUsdTicks`, with
+LiteLLM estimates as the fallback. In-progress turns count only after
+`turn_completed`. See [Grok Build CLI](/guide/grok/).
 :::
 
 ## Can These Be Added Later?

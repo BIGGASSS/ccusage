@@ -61,23 +61,26 @@ npx ccusage@latest
 
 ccusage reads local usage data from coding agent CLIs and turns it into daily, weekly, monthly, and session reports.
 
-| Source             | Focused command example  |
-| ------------------ | ------------------------ |
-| Claude Code        | `ccusage claude daily`   |
-| Codex              | `ccusage codex daily`    |
-| OpenCode           | `ccusage opencode daily` |
-| Amp                | `ccusage amp daily`      |
-| Droid              | `ccusage droid daily`    |
-| Codebuff           | `ccusage codebuff daily` |
-| Hermes Agent       | `ccusage hermes daily`   |
-| pi-agent           | `ccusage pi daily`       |
-| Goose              | `ccusage goose daily`    |
-| OpenClaw           | `ccusage openclaw daily` |
-| Kilo               | `ccusage kilo daily`     |
-| Kimi               | `ccusage kimi daily`     |
-| Qwen               | `ccusage qwen daily`     |
-| GitHub Copilot CLI | `ccusage copilot daily`  |
-| Gemini CLI         | `ccusage gemini daily`   |
+| Source             | Focused command example     |
+| ------------------ | --------------------------- |
+| Claude Code        | `ccusage claude daily`      |
+| Codex              | `ccusage codex daily`       |
+| OpenCode           | `ccusage opencode daily`    |
+| Amp                | `ccusage amp daily`         |
+| Droid              | `ccusage droid daily`       |
+| Codebuff           | `ccusage codebuff daily`    |
+| Hermes Agent       | `ccusage hermes daily`      |
+| pi-agent           | `ccusage pi daily`          |
+| Goose              | `ccusage goose daily`       |
+| OpenClaw           | `ccusage openclaw daily`    |
+| Kilo               | `ccusage kilo daily`        |
+| Kimi               | `ccusage kimi daily`        |
+| Qwen               | `ccusage qwen daily`        |
+| GitHub Copilot CLI | `ccusage copilot daily`     |
+| Gemini CLI         | `ccusage gemini daily`      |
+| Antigravity        | `ccusage antigravity daily` |
+| Grok Build CLI     | `ccusage grok daily`        |
+| ZCode              | `ccusage zcode daily`       |
 
 Use `ccusage daily`, `ccusage weekly`, `ccusage monthly`, or `ccusage session` to include every detected source in one report.
 
@@ -132,6 +135,9 @@ bunx ccusage kimi daily
 bunx ccusage qwen daily
 bunx ccusage copilot daily
 bunx ccusage gemini daily
+bunx ccusage antigravity daily
+bunx ccusage grok daily
+bunx ccusage zcode daily
 bunx ccusage pi daily --pi-path /path/to/sessions
 bunx ccusage pi daily --pi-path /path/to/sessions,/archive/pi/sessions
 
@@ -142,6 +148,9 @@ bunx ccusage daily --by-agent --json
 
 # Filters and options
 bunx ccusage daily --since 2026-04-25 --until 2026-05-16
+bunx ccusage daily --last 1  # Today
+bunx ccusage weekly --last 1  # This week
+bunx ccusage monthly --last 1  # This month
 bunx ccusage daily --json  # JSON output
 bunx ccusage daily --no-cost  # Hide cost columns and JSON cost fields
 bunx ccusage daily --timezone UTC  # Use UTC timezone
@@ -161,12 +170,13 @@ bunx ccusage monthly --compact  # Compact monthly report
 - 📊 **Daily Report**: View token usage and costs aggregated by date
 - 📅 **Monthly Report**: View token usage and costs aggregated by month
 - 💬 **Session Report**: View usage grouped by conversation sessions
-- 🤖 **Unified CLI Reports**: View Claude Code, Codex, OpenCode, Amp, Droid, Codebuff, Hermes Agent, pi-agent, Goose, OpenClaw, Kilo, Kimi, Qwen, GitHub Copilot CLI, and Gemini CLI usage from one CLI
+- 🤖 **Unified CLI Reports**: View Claude Code, Codex, OpenCode, Amp, Droid, Codebuff, Hermes Agent, pi-agent, Goose, OpenClaw, Kilo, Kimi, Qwen, GitHub Copilot CLI, Gemini CLI, Antigravity, Grok Build CLI, and ZCode usage from one CLI
 - ⏰ **5-Hour Blocks Report**: Track usage within Claude's billing windows with active block monitoring
 - 🚀 **Statusline Integration**: Compact usage display for Claude Code status bar hooks (Beta)
 - 🤖 **Model Tracking**: See which models are used across supported sources
 - 📊 **Model Breakdown**: View per-model cost breakdown with `--breakdown` flag
 - 📅 **Date Filtering**: Filter reports by date range using `--since` and `--until`
+- ⏱️ **Recent Periods**: Jump to today, this week, or this month with `--last 1` on any daily, weekly, or monthly report
 - 📁 **Custom Paths**: Support for custom local data directory locations
 - 🎨 **Beautiful Output**: Colorful table-formatted display with automatic responsive layout
 - 📱 **Smart Tables**: Automatic compact mode for narrow terminals (< 100 characters) with essential columns
@@ -185,6 +195,8 @@ bunx ccusage monthly --compact  # Compact monthly report
 ## Documentation
 
 Full documentation is available at **[ccusage.com](https://ccusage.com/)**
+
+Further reading (Japanese): [how ccusage began](https://ryoppippi.com/blog/2025-05-29-zenn-6c9a8fe6629cd6-ja/)
 
 ## Development
 

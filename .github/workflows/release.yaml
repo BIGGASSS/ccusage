@@ -1,15 +1,15 @@
 name: tagpr
 
+# Releases are opt-in for this fork; ordinary pushes never create release PRs
+# or publish packages. Dispatch again after merging a release PR to publish.
 on:
-  push:
-    branches:
-      - main
+  workflow_dispatch:
 
 concurrency: tagpr
 
 jobs:
   tagpr:
-    runs-on: blacksmith-32vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
       contents: write
@@ -19,11 +19,13 @@ jobs:
       tag: ${{ steps.tagpr.outputs.tag }}
     steps:
       # persist-credentials stays on (default) so tagpr can push the release PR and tag
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      # tagpr always operates on the configured release branch.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: main
           fetch-depth: 0
       - id: tagpr
-        uses: Songmu/tagpr@e84001bd5dac8defa0c75b3913937d284a3b3660 # v1.20.0
+        uses: Songmu/tagpr@d1b8138b7a31075141b6cd64103de9485ced7ac9 # v1.20.1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -37,28 +39,28 @@ jobs:
     needs: tagpr
     if: needs.tagpr.outputs.tag != ''
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 30
+    timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
         include:
           - name: build-linux-arm64
-            os: blacksmith-32vcpu-ubuntu-2404-arm
+            os: ubuntu-24.04-arm
             platform: linux
             arch: arm64
             binary: result/bin/ccusage
           - name: build-linux-x64
-            os: blacksmith-32vcpu-ubuntu-2404
+            os: ubuntu-latest
             platform: linux
             arch: x64
             binary: result/bin/ccusage
           - name: build-mac-arm64
-            os: blacksmith-12vcpu-macos-26
+            os: macos-15
             platform: darwin
             arch: arm64
             binary: result/bin/ccusage
           - name: build-mac-x64
-            os: blacksmith-12vcpu-macos-26
+            os: macos-15
             platform: darwin
             arch: x64
             binary: result/bin/ccusage
@@ -68,13 +70,13 @@ jobs:
             arch: arm64
             binary: rust/target/release/ccusage.exe
           - name: build-windows-x64
-            os: blacksmith-32vcpu-windows-2025
+            os: windows-2025
             platform: win32
             arch: x64
             binary: rust/target/release/ccusage.exe
 
     steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.tagpr.outputs.tag }}
           fetch-depth: 0
@@ -108,20 +110,21 @@ jobs:
       contents: read
       id-token: write
     steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.tagpr.outputs.tag }}
           fetch-depth: 0
           persist-credentials: false
       - uses: ./.github/actions/setup-nix-cache
-      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           registry-url: 'https://registry.npmjs.org'
           node-version: lts/*
           package-manager-cache: false
       # node comes from setup-node above (needed for the npm registry auth);
-      # Nushell package checks bring Nu through their Nix shebangs.
-      - run: nix profile install --inputs-from . nixpkgs#pnpm
+      # Nushell package checks bring Nu through their Nix shebangs. `publint` is
+      # the flake's own pinned build, invoked by every package's prepack script.
+      - run: nix profile install --inputs-from . nixpkgs#pnpm .#publint
       - run: pnpm install --frozen-lockfile
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
@@ -140,18 +143,18 @@ jobs:
       - tagpr
       - npm
     if: needs.tagpr.outputs.tag != ''
-    runs-on: blacksmith-32vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
       # changelogithub resolves the release tag with `git tag --points-at HEAD`,
       # so checking out the tag is what makes it pick the right release
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.tagpr.outputs.tag }}
           fetch-depth: 0
           persist-credentials: false
       - uses: ./.github/actions/setup-nix-cache
-      - run: nix develop --command pnpm changelogithub
+      - run: nix run .#changelogithub
         env:
           GITHUB_TOKEN: ${{secrets.GITHUB_TOKEN}}

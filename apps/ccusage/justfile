@@ -22,7 +22,7 @@ ensure-native-binary:
     scripts/ensure-native-binary.nu
 
 generate-schema:
-    cargo run --quiet --manifest-path ../../rust/Cargo.toml --bin generate-config-schema -- config-schema.json
+    cargo run --quiet --manifest-path ../../rust/Cargo.toml -p ccusage-config --bin generate-config-schema -- config-schema.json
     oxfmt --write config-schema.json
     cp config-schema.json ../../docs/public/config-schema.json
 
@@ -31,6 +31,10 @@ start *args:
 
 test-statusline:
     just test-statusline-file test/statusline-test.json
+
+# Run focused tests for the Babashka performance harness.
+test-performance-harness:
+    scripts/compare-pr-performance_test.clj
 
 test-statusline-all:
     @echo 'Testing Sonnet 4:'

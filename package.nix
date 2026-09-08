@@ -2,14 +2,22 @@
   craneLib,
   inputs,
   lib,
+  lld,
   mold,
+  pkgs,
   pkg-config,
   root ? ./.,
   stdenv,
   apple-sdk_15,
 }:
 let
-  inherit ((builtins.fromJSON (builtins.readFile (root + /package.json)))) version;
+  # The root manifest is the version source of truth: rust/crates/ccusage/build.rs
+  # falls back to reading it when CCUSAGE_VERSION is unset, and a test in main.rs
+  # asserts the compiled version matches it.
+  inherit (lib.importJSON (root + /package.json)) version;
+  # The published npm manifest owns the name and the user-facing metadata, so
+  # `meta` below derives from it instead of restating it in Nix.
+  cliPackageJson = lib.importJSON (root + /apps/ccusage/package.json);
   src = lib.cleanSourceWith {
     src = root + /rust;
     filter =
@@ -19,10 +27,17 @@ let
       || lib.hasSuffix "/cli-commands.json" path
       || lib.hasSuffix "/fast-multiplier-overrides.json" path
       || lib.hasSuffix "/models-dev-pricing.json" path
+      || lib.hasSuffix "/models-dev-catalog-rules.json" path
       || lib.hasSuffix "/codex-auto-review-fallbacks.json" path;
   };
+  # sqlite3-src's build script turns every SQLITE_* environment variable into a -D
+  # define for the bundled amalgamation, which is how .cargo/config.toml trims it.
+  # Cargo only reads that file when the working directory is the repository root, and
+  # no Nix build has that, so the same values are passed through here rather than
+  # duplicated.
+  cargoConfigEnv = (builtins.fromTOML (builtins.readFile (root + /.cargo/config.toml))).env;
   commonArgs = {
-    pname = "ccusage";
+    pname = cliPackageJson.name;
     inherit version src;
     strictDeps = true;
     doCheck = false;
@@ -30,21 +45,30 @@ let
     CCUSAGE_PRICING_JSON_PATH = "${inputs.litellm}/model_prices_and_context_window.json";
     CCUSAGE_VERSION = version;
     RUSTFLAGS =
-      lib.optionalString stdenv.isLinux "-C link-arg=-fuse-ld=mold"
+      # Splitting the runtime into per-adapter crates makes each crate
+      # instantiate the shared generic machinery for its own types, and stable
+      # Rust cannot share those instantiations across crates. Many of the copies
+      # are byte-identical, so mold folds them back together; nothing here
+      # depends on two `fn` items having distinct addresses.
+      lib.optionalString stdenv.isLinux "-C link-arg=-fuse-ld=mold -C link-arg=-Wl,--icf=all"
       # The nixpkgs Darwin stdenv injects -liconv even though ccusage uses no
       # iconv symbols, recording an unused /nix/store libiconv dependency that
       # crashes non-Nix Macs (#1251). dead_strip_dylibs drops dylib load
       # commands with no referenced symbols, so the unused libiconv is removed
       # and the binary links only system dylibs.
-      + lib.optionalString stdenv.isDarwin "-C link-arg=-Wl,-dead_strip_dylibs";
+      # lld is used on Darwin for its identical-code folding, which recovers part of
+      # the duplication the crate split introduces; ld64 has no equivalent.
+      + lib.optionalString stdenv.isDarwin "-C link-arg=-Wl,-dead_strip_dylibs -C link-arg=-fuse-ld=lld -C link-arg=-Wl,--icf=all";
     nativeBuildInputs = [
       pkg-config
     ]
-    ++ lib.optionals stdenv.isLinux [ mold ];
+    ++ lib.optionals stdenv.isLinux [ mold ]
+    ++ lib.optionals stdenv.isDarwin [ lld ];
     buildInputs = lib.optionals stdenv.isDarwin [
       apple-sdk_15
     ];
-  };
+  }
+  // cargoConfigEnv;
   # Keep the dependency artifact keyed only by inputs that affect Cargo deps.
   # Pricing snapshots and the npm release version are embedded by the final
   # package. The Rust workspace packages intentionally stay at 0.0.0, and the
@@ -70,7 +94,18 @@ let
         cleanCargoTomlFilter = cargoTomlFilter;
       };
     };
-  cargoArtifacts = craneLib.buildDepsOnly depsOnlyArgs;
+  dependencyArtifacts = craneLib.buildDepsOnly depsOnlyArgs;
+  workspaceArtifacts = import ./nix/cargo-artifacts.nix {
+    inherit
+      commonArgs
+      craneLib
+      lib
+      pkgs
+      root
+      ;
+    cargoArtifacts = dependencyArtifacts;
+  };
+  cargoArtifacts = workspaceArtifacts.adapters;
 in
 craneLib.buildPackage (
   commonArgs
@@ -97,15 +132,16 @@ craneLib.buildPackage (
       inherit
         cargoArtifacts
         commonArgs
+        dependencyArtifacts
         depsOnlyArgs
         version
+        workspaceArtifacts
         ;
     };
     meta = {
-      description = "Analyze coding agent CLI token usage and costs from local data";
-      homepage = "https://github.com/ccusage/ccusage";
-      license = lib.licenses.mit;
-      mainProgram = "ccusage";
+      inherit (cliPackageJson) description homepage;
+      license = lib.getLicenseFromSpdxId cliPackageJson.license;
+      mainProgram = builtins.head (builtins.attrNames cliPackageJson.bin);
     };
   }
 )

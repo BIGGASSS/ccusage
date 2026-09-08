@@ -28,17 +28,6 @@ in
           src = root;
           package = pkgs.prek;
           hooks = {
-            renovate-config-validator = {
-              enable = true;
-              entry = "${lib.getExe pkgs.renovate} --strict config-validator";
-              files = "renovate\\.json5?$";
-              pass_filenames = false;
-              stages = [
-                "pre-commit"
-                "pre-push"
-              ];
-              priority = 0;
-            };
             ccusage-treefmt = {
               enable = true;
               name = "treefmt";
@@ -104,7 +93,7 @@ in
             node-test = {
               enable = true;
               name = "node test";
-              entry = "${lib.getExe pkgs.nodejs} --test apps/ccusage/src/cli.test.ts nix/models-dev-compact.test.ts";
+              entry = "${lib.getExe pkgs.nodejs} --test apps/ccusage/src/cli.test.ts nix/tools/models-dev-gen/compact.test.ts";
               files = "\\.(ts|tsx|js|jsx|mjs|cjs)$";
               pass_filenames = false;
               stages = [ "pre-push" ];
