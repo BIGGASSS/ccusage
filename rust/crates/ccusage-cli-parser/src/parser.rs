@@ -628,7 +628,7 @@ fn parse_pi_command(
     mut shared: SharedArgs,
     config: &dyn CliConfig,
 ) -> Result<Command, String> {
-    let kind = parse_agent_report_kind(parser, "pi", STANDARD_AGENT_REPORTS)?;
+    let kind = parse_agent_report_kind(parser, "pi", OPENCODE_AGENT_REPORTS)?;
     let mut pi_path = None;
     let mut codex_speed = CodexSpeed::Auto;
     config.apply_agent_args(&mut codex_speed, Some(&mut pi_path), None);
@@ -959,9 +959,9 @@ fn agent_report_supported(agent: &str, report: &str) -> bool {
             "daily" | "weekly" | "monthly" | "session" | "blocks" | "statusline"
         ),
         "codex" => matches!(report, "daily" | "monthly" | "session"),
-        "opencode" => matches!(report, "daily" | "weekly" | "monthly" | "session"),
-        "amp" | "droid" | "codebuff" | "hermes" | "pi" | "goose" | "kilo" | "copilot"
-        | "gemini" | "antigravity" | "kimi" | "qwen" | "openclaw" | "grok" | "zcode" => {
+        "opencode" | "pi" => matches!(report, "daily" | "weekly" | "monthly" | "session"),
+        "amp" | "droid" | "codebuff" | "hermes" | "goose" | "kilo" | "copilot" | "gemini"
+        | "antigravity" | "kimi" | "qwen" | "openclaw" | "grok" | "zcode" => {
             matches!(report, "daily" | "monthly" | "session")
         }
         _ => false,

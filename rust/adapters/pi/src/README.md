@@ -16,6 +16,7 @@ Commands:
 
 ```sh
 ccusage pi daily
+ccusage pi weekly
 ccusage pi monthly
 ccusage pi session
 ccusage pi daily --json

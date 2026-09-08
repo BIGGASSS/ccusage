@@ -461,6 +461,10 @@
 					"description": "Show pi-agent usage grouped by date"
 				},
 				{
+					"name": "weekly",
+					"description": "Show pi-agent usage grouped by week"
+				},
+				{
 					"name": "monthly",
 					"description": "Show pi-agent usage grouped by month"
 				},
@@ -474,6 +478,12 @@
 			"path": ["pi", "daily"],
 			"description": "Show pi-agent usage grouped by date",
 			"usage": "ccusage pi daily <OPTIONS>",
+			"options": "pi_period_options"
+		},
+		{
+			"path": ["pi", "weekly"],
+			"description": "Show pi-agent usage grouped by week",
+			"usage": "ccusage pi weekly <OPTIONS>",
 			"options": "pi_period_options"
 		},
 		{

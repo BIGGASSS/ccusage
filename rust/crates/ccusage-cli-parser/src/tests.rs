@@ -943,8 +943,8 @@ fn snapshots_cli_parse_error_guidance() {
             ]),
         }),
         json!({
-            "args": ["ccusage", "pi", "weekly"],
-            "error": parse_error(&["ccusage", "pi", "weekly"]),
+            "args": ["ccusage", "pi", "blocks"],
+            "error": parse_error(&["ccusage", "pi", "blocks"]),
         }),
     ];
 
@@ -1135,6 +1135,27 @@ fn parses_opencode_weekly_options() {
     };
     assert_eq!(args.kind, AgentReportKind::Weekly);
     assert!(args.shared.json);
+}
+
+#[test]
+fn parses_pi_weekly_options() {
+    let cli = parse(&[
+        "ccusage",
+        "pi",
+        "weekly",
+        "--json",
+        "--last",
+        "4",
+        "--pi-path",
+        "/tmp/sessions",
+    ]);
+    let Some(Command::Pi(args)) = cli.command else {
+        panic!("expected pi command");
+    };
+    assert_eq!(args.kind, AgentReportKind::Weekly);
+    assert!(args.shared.json);
+    assert_eq!(args.shared.last, Some(4));
+    assert_eq!(args.pi_path.as_deref(), Some("/tmp/sessions"));
 }
 
 #[test]
