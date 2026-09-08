@@ -1,68 +1,26 @@
-# Contributing to ccusage
+# Contributing
 
-This guide exists to save maintainers and contributors time.
+This fork accepts bug reports, feature proposals, and pull requests directly. No contributor approval is required.
 
-## The One Rule
+- For bugs, include the ccusage version, reproduction steps, and expected behavior. Remove private information from logs.
+- Keep changes focused. Explain the problem, your approach, and how you tested it.
+- Discuss substantial changes in an issue before investing in an implementation.
+- Review your changes and add regression tests for behavior changes.
 
-**You must understand your change.** If you cannot explain what your code does and how it interacts with the rest of the project, the PR may be closed.
+## Development
 
-Using AI tools is fine. Submitting generated output that you have not reviewed and cannot explain is not.
+The CLI is Rust-first: agent adapters live in `rust/adapters/`, shared crates in `rust/crates/`, and the npm launcher and packaging in `apps/ccusage/`.
 
-If you use an agent, run it from the repository root so it picks up `CLAUDE.md` and the repo-local skills.
+Use the pinned Nix development shell. With Nix and direnv installed:
 
-## Contribution Gate
-
-Issues and PRs from new contributors are auto-closed by default.
-
-This gate is based on the contributor approval workflow used by [earendil-works/pi](https://github.com/earendil-works/pi).
-
-Start with an issue before opening a PR. Keep it short, concrete, and written in your own voice.
-
-Maintainers may approve contributors by replying on an issue:
-
-- `lgtmi`: future issues will not be auto-closed
-- `lgtm`: future issues and PRs will not be auto-closed
-
-`lgtmi` does not grant rights to submit PRs. Only `lgtm` grants rights to submit PRs.
-
-## Quality Bar For Issues
-
-Use one of the GitHub issue templates.
-
-- Keep it concise.
-- Write in your own voice.
-- State the bug or request clearly.
-- Explain why it matters.
-- If you want to implement the change yourself, say so.
-
-Maintainers may reopen clear, useful issues and approve the author for future issues or PRs.
-
-## Before Submitting a PR
-
-Do not open a PR unless you have already been approved with `lgtm`.
-
-Before submitting a PR, run:
-
-```bash
-just fmt
-just typecheck
-just test
+```sh
+direnv allow
+direnv exec . just install
+direnv exec . just fmt
+direnv exec . just typecheck
+direnv exec . just test
 ```
 
-Use the canonical `ccusage` command in docs and tests. Standalone wrapper packages such as `ccusage-codex`, `ccusage-opencode`, `ccusage-amp`, and `ccusage-pi` have been removed and should not be reintroduced.
+Run `just --list` inside the shell for additional commands. Install dependencies again after lockfile changes.
 
-Do not proactively create documentation files unless the change requires user-facing documentation.
-
-## FAQ
-
-### Why are new issues and PRs auto-closed?
-
-ccusage receives agent-assisted reports and changes. Auto-closing gives maintainers a buffer to review issues on their own schedule and reopen the ones that are concrete, reproducible, and worth investigating.
-
-### Why might an issue get no reply?
-
-Low-signal issues, unclear reports, duplicates, and issues that do not follow this guide may be closed without discussion. A reply is maintenance work too.
-
-### Is AI-generated code banned?
-
-No. AI assistance is allowed. The requirement is that the contributor understands the change, tests it, and can explain it in their own words.
+Use the canonical `ccusage` command with agent subcommands (for example, `ccusage codex daily`). Update user-facing documentation when behavior changes. Never include credentials or private agent logs in a contribution.
