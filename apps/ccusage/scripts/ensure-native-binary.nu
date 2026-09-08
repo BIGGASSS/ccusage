@@ -24,7 +24,7 @@ def main [] {
         }
         exit 0
     }
-    ^cargo build --manifest-path ($repo_root | path join rust Cargo.toml) --release --bin ccusage
+    ^cargo build --manifest-path ($repo_root | path join rust Cargo.toml) --release --bin ccusage --features fetch-litellm-pricing
     if not (has_expected_version $cargo_binary $version) {
         error make {msg: $"($cargo_binary) did not report version ($version) after cargo build"}
     }
