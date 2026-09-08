@@ -44,7 +44,9 @@ ccusage monthly --last 3
 
 The count is inclusive of the current period, so `--last 2` on a daily report covers yesterday and today. Weeks start on the same day the report buckets by, which is Monday everywhere except `ccusage claude weekly`, where `--start-of-week` decides.
 
-`--last` works on every daily, weekly, and monthly report, including the per-agent ones such as `ccusage codex daily --last 1`. It is not available on `session`, `blocks`, or `statusline`, which have no calendar period, and it cannot be combined with `--since`, `--until`, or `--sections`.
+`--last` works on every daily, weekly, monthly, and session report, including per-agent reports. Session reports count days: `ccusage session --last 30` and `ccusage pi session --last 30` apply a date filter covering the last 30 days, including today, in the selected timezone.
+
+It is not available on `blocks` or `statusline`, and it cannot be combined with `--since`, `--until`, or `--sections`.
 
 ### Output Format
 

@@ -1041,16 +1041,15 @@ fn parse_last_periods(value: &str) -> Result<u32, String> {
     }
 }
 
-/// `--last` counts the report's own calendar periods, so it only makes sense on
-/// the reports that group rows by day, week, or month.
+/// `--last` counts calendar periods; session reports use days.
 fn last_option_error(command: Option<&Command>, root_shared: &SharedArgs) -> Option<String> {
     let (shared, supported) = match command {
         None => (root_shared, true),
-        Some(Command::All(args)) => (&args.shared, args.kind != AgentReportKind::Session),
+        Some(Command::All(args)) => (&args.shared, true),
         Some(Command::Daily(args)) => (&args.shared, true),
         Some(Command::Monthly(shared)) => (shared, true),
         Some(Command::Weekly(args)) => (&args.shared, true),
-        Some(Command::Session(args)) => (&args.shared, false),
+        Some(Command::Session(args)) => (&args.shared, true),
         Some(Command::Blocks(args)) => (&args.shared, false),
         Some(Command::Statusline(_)) => (root_shared, false),
         Some(
@@ -1071,12 +1070,12 @@ fn last_option_error(command: Option<&Command>, root_shared: &SharedArgs) -> Opt
             | Command::OpenClaw(args)
             | Command::Grok(args)
             | Command::ZCode(args),
-        ) => (&args.shared, args.kind != AgentReportKind::Session),
+        ) => (&args.shared, true),
     };
     shared.last?;
     if !supported {
         return Some(
-            "The --last option is only available for the daily, weekly, and monthly reports."
+            "The --last option is only available for the daily, weekly, monthly, and session reports."
                 .to_string(),
         );
     }
