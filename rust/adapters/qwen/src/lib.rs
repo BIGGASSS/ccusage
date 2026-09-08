@@ -8,6 +8,10 @@ mod parser;
 mod paths;
 mod report;
 
+#[cfg(test)]
+#[path = "../../common/src/session_tests.rs"]
+mod session_limit_tests;
+
 use crate::{
     Result,
     cli::{AgentCommandArgs, AgentReportKind, SharedArgs},
@@ -29,6 +33,7 @@ pub fn run(args: AgentCommandArgs) -> Result<()> {
     if args.kind == AgentReportKind::Session {
         filter_session_summaries(&mut rows, &args.shared);
     }
+    ccusage_adapter_common::limit_session_rows(&mut rows, &entries, args.kind, args.shared.last);
     sort_summaries(&mut rows, &args.shared.order, |row| {
         ccusage_core::summary_period(row)
     });

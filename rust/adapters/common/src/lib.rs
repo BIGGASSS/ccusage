@@ -8,6 +8,9 @@ use ccusage_core::{LoadedEntry, cli::SharedArgs, date_within_range};
 
 pub mod jsonl;
 pub mod report;
+pub mod session;
+
+pub use session::limit_session_rows;
 
 pub use report::print_table_for_agent;
 

@@ -37,3 +37,10 @@ semantics require it.
 Agent-specific source notes live in each adapter's `README.md` when the source
 has non-obvious paths, record shapes, token semantics, model fallback behavior,
 or command differences.
+
+Session reports interpret `--last N` as the N most recently active sessions,
+not a date window. Select sessions after aggregation and date filtering, before
+presentation sorting and totals. `common::limit_session_rows` handles standard
+summaries, including adapters whose JSON does not expose activity timestamps;
+Codex applies the same selection to its source-specific groups. Keep the
+existing `--order` presentation sort independent of which sessions are selected.

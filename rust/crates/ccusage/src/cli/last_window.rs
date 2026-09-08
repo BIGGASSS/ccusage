@@ -8,7 +8,7 @@ use super::Cli;
 /// The count means "the most recent N periods of the report's own unit", so it
 /// can only be resolved once the command is known: `daily --last 1` is today,
 /// `weekly --last 1` is the current week, `monthly --last 1` is this month.
-/// Session reports use days, so `session --last 1` is today.
+/// Session reports limit row counts separately and do not set a date bound.
 pub(crate) fn resolve(cli: &mut Cli) -> Result<(), String> {
     let Some((shared, unit, start_of_week)) = window_target(cli) else {
         return Ok(());
@@ -54,10 +54,7 @@ fn window_target(cli: &mut Cli) -> Option<(&mut SharedArgs, PeriodUnit, WeekDay)
             | Command::Grok(args)
             | Command::ZCode(args),
         ) => agent_window_target(args),
-        Some(Command::Session(args)) => {
-            Some((&mut args.shared, PeriodUnit::Day, UNIFIED_WEEK_START))
-        }
-        Some(Command::Blocks(_) | Command::Statusline(_)) => None,
+        Some(Command::Session(_) | Command::Blocks(_) | Command::Statusline(_)) => None,
     }
 }
 
@@ -69,7 +66,8 @@ fn agent_window_target(
     args: &mut AgentCommandArgs,
 ) -> Option<(&mut SharedArgs, PeriodUnit, WeekDay)> {
     let unit = match args.kind {
-        AgentReportKind::Daily | AgentReportKind::Session => PeriodUnit::Day,
+        AgentReportKind::Daily => PeriodUnit::Day,
+        AgentReportKind::Session => return None,
         AgentReportKind::Weekly => PeriodUnit::Week,
         AgentReportKind::Monthly => PeriodUnit::Month,
     };
@@ -145,9 +143,7 @@ mod tests {
     }
 
     #[test]
-    fn resolves_session_windows_in_days() {
-        let today = format_date(utc_now(), Some("UTC"));
-        let expected = last_periods_since(PeriodUnit::Day, 30, &today, WeekDay::Monday);
+    fn leaves_session_date_windows_untouched() {
         for command in [
             Command::All(agent_command(AgentReportKind::Session, 30)),
             Command::Pi(agent_command(AgentReportKind::Session, 30)),
@@ -157,7 +153,7 @@ mod tests {
                 id: None,
             }),
         ] {
-            assert_eq!(resolved_since(command), expected);
+            assert_eq!(resolved_since(command), None);
         }
     }
 

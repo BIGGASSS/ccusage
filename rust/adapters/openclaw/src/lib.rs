@@ -6,6 +6,10 @@ mod parser;
 mod paths;
 mod report;
 
+#[cfg(test)]
+#[path = "../../common/src/session_tests.rs"]
+mod session_limit_tests;
+
 use crate::{
     Result, cli::AgentCommandArgs, print_json_or_jq, print_usage_table, sort_summaries, wants_json,
 };
@@ -23,6 +27,7 @@ pub fn run(args: AgentCommandArgs) -> Result<()> {
     let mut entries = load_entries(&args.shared, args.open_claw_path.as_deref(), Some(&pricing))?;
     filter_loaded_entries_by_date(&mut entries, &args.shared);
     let mut rows = summarize_entries(&entries, args.kind)?;
+    ccusage_adapter_common::limit_session_rows(&mut rows, &entries, args.kind, args.shared.last);
     sort_summaries(&mut rows, &args.shared.order, |row| {
         ccusage_core::summary_period(row)
     });

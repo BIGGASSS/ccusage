@@ -154,10 +154,19 @@ pub(crate) fn run_session(args: SessionArgs) -> Result<()> {
     rows.retain(|row| {
         row.input_tokens + row.output_tokens + row.cache_creation_tokens + row.cache_read_tokens > 0
     });
-    rows.sort_by(|a, b| match session_shared.order {
-        SortOrder::Asc => a.total_cost.total_cmp(&b.total_cost),
-        SortOrder::Desc => b.total_cost.total_cmp(&a.total_cost),
+    ccusage_adapter_common::session::limit_recent(&mut rows, shared.last, |row| {
+        (
+            row.last_activity
+                .as_deref()
+                .and_then(ccusage_core::parse_ts_timestamp),
+            row.session_id.clone().unwrap_or_default(),
+        )
     });
+    if shared.last.is_none() {
+        rows.sort_by(|a, b| b.total_cost.total_cmp(&a.total_cost));
+    } else if shared.order == SortOrder::Asc {
+        rows.reverse();
+    }
 
     if wants_json(&session_shared) {
         let output = json!({

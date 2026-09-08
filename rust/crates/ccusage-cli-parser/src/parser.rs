@@ -1041,17 +1041,17 @@ fn parse_last_periods(value: &str) -> Result<u32, String> {
     }
 }
 
-/// `--last` counts calendar periods; session reports use days.
+/// `--last` counts calendar periods, or rows for session reports.
 fn last_option_error(command: Option<&Command>, root_shared: &SharedArgs) -> Option<String> {
-    let (shared, supported) = match command {
-        None => (root_shared, true),
-        Some(Command::All(args)) => (&args.shared, true),
-        Some(Command::Daily(args)) => (&args.shared, true),
-        Some(Command::Monthly(shared)) => (shared, true),
-        Some(Command::Weekly(args)) => (&args.shared, true),
-        Some(Command::Session(args)) => (&args.shared, true),
-        Some(Command::Blocks(args)) => (&args.shared, false),
-        Some(Command::Statusline(_)) => (root_shared, false),
+    let (shared, supported, is_session) = match command {
+        None => (root_shared, true, false),
+        Some(Command::All(args)) => (&args.shared, true, args.kind == AgentReportKind::Session),
+        Some(Command::Daily(args)) => (&args.shared, true, false),
+        Some(Command::Monthly(shared)) => (shared, true, false),
+        Some(Command::Weekly(args)) => (&args.shared, true, false),
+        Some(Command::Session(args)) => (&args.shared, true, true),
+        Some(Command::Blocks(args)) => (&args.shared, false, false),
+        Some(Command::Statusline(_)) => (root_shared, false, false),
         Some(
             Command::Codex(args)
             | Command::OpenCode(args)
@@ -1070,7 +1070,7 @@ fn last_option_error(command: Option<&Command>, root_shared: &SharedArgs) -> Opt
             | Command::OpenClaw(args)
             | Command::Grok(args)
             | Command::ZCode(args),
-        ) => (&args.shared, true),
+        ) => (&args.shared, true, args.kind == AgentReportKind::Session),
     };
     shared.last?;
     if !supported {
@@ -1079,7 +1079,7 @@ fn last_option_error(command: Option<&Command>, root_shared: &SharedArgs) -> Opt
                 .to_string(),
         );
     }
-    if shared.since.is_some() || shared.until.is_some() {
+    if !is_session && (shared.since.is_some() || shared.until.is_some()) {
         return Some("The --last option cannot be combined with --since or --until.".to_string());
     }
     if matches!(command, Some(Command::All(args)) if args.sections.is_some()) {

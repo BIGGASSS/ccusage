@@ -8,6 +8,10 @@ mod parser;
 mod paths;
 mod report;
 
+#[cfg(test)]
+#[path = "../../common/src/session_tests.rs"]
+mod session_limit_tests;
+
 use crate::cli::AgentCommandArgs;
 use crate::{PricingMap, Result, print_json_or_jq, sort_summaries, wants_json};
 
@@ -25,6 +29,7 @@ pub fn run(args: AgentCommandArgs) -> Result<()> {
     let mut entries = load_entries(&shared, &pricing)?;
     filter_loaded_entries_by_date(&mut entries, &shared);
     let mut rows = summarize_entries(&entries, args.kind)?;
+    ccusage_adapter_common::limit_session_rows(&mut rows, &entries, args.kind, shared.last);
     sort_summaries(&mut rows, &shared.order, report::summary_period);
     if wants_json(&shared) {
         return print_json_or_jq(

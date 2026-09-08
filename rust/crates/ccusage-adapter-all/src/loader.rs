@@ -400,6 +400,21 @@ fn finish_rows(kind: AgentReportKind, mut rows: Vec<AllRow>, shared: &SharedArgs
         for row in &mut rows {
             row.metadata_agents = None;
         }
+        if let Some(last) = shared.last {
+            // Select globally across agents by activity, not by session ID or
+            // display order. Stable sorting gives ties a deterministic order.
+            sort_rows(&mut rows, &crate::cli::SortOrder::Asc);
+            rows.sort_by_cached_key(|row| {
+                std::cmp::Reverse(
+                    row.metadata
+                        .as_ref()
+                        .and_then(|metadata| metadata.get("lastActivity"))
+                        .and_then(Value::as_str)
+                        .and_then(crate::parse_ts_timestamp),
+                )
+            });
+            rows.truncate(last as usize);
+        }
         sort_rows(&mut rows, &shared.order);
         return rows;
     }
@@ -920,6 +935,92 @@ mod tests {
             project: None,
             versions: None,
         }
+    }
+
+    fn session_row(id: &str, agent: &'static str, activity: Option<&str>, tokens: u64) -> AllRow {
+        AllRow {
+            period: id.to_string(),
+            agent,
+            models_used: vec![],
+            input_tokens: tokens,
+            output_tokens: 0,
+            cache_creation_tokens: 0,
+            cache_read_tokens: 0,
+            total_tokens: tokens,
+            total_cost: tokens as f64,
+            metadata: activity.map(|value| json!({ "lastActivity": value })),
+            metadata_agents: None,
+            agent_breakdowns: None,
+            model_breakdowns: vec![],
+        }
+    }
+
+    #[test]
+    fn last_sessions_selects_globally_by_activity_before_display_order_and_totals() {
+        let rows = vec![
+            session_row("z-old", "claude", Some("2020-01-01T00:00:00Z"), 100),
+            session_row("a-newest", "codex", Some("2020-01-03T00:00:00Z"), 20),
+            session_row("m-new", "claude", Some("2020-01-02T00:00:00Z"), 30),
+            session_row("b-unknown", "pi", None, 200),
+        ];
+        for (order, expected) in [
+            (crate::cli::SortOrder::Asc, vec!["a-newest", "m-new"]),
+            (crate::cli::SortOrder::Desc, vec!["m-new", "a-newest"]),
+        ] {
+            let selected = finish_rows(
+                AgentReportKind::Session,
+                rows.clone(),
+                &SharedArgs {
+                    last: Some(2),
+                    order,
+                    ..SharedArgs::default()
+                },
+            );
+            assert_eq!(
+                selected
+                    .iter()
+                    .map(|row| row.period.as_str())
+                    .collect::<Vec<_>>(),
+                expected
+            );
+            let report = crate::report::report_json(&selected, AgentReportKind::Session);
+            assert_eq!(report["totals"]["totalTokens"], 50);
+            assert_eq!(report["totals"]["totalCost"], 50.0);
+        }
+        for (last, count) in [(None, 4), (Some(10), 4), (Some(0), 0)] {
+            assert_eq!(
+                finish_rows(
+                    AgentReportKind::Session,
+                    rows.clone(),
+                    &SharedArgs {
+                        last,
+                        ..SharedArgs::default()
+                    }
+                )
+                .len(),
+                count
+            );
+        }
+    }
+
+    #[test]
+    fn last_sessions_compares_instants_and_breaks_ties_deterministically() {
+        let rows = vec![
+            session_row("z", "claude", Some("2020-01-03T01:00:00+02:00"), 1),
+            session_row("a", "codex", Some("2020-01-03T00:00:00Z"), 2),
+            session_row("a", "claude", Some("2020-01-03T00:00:00Z"), 3),
+            session_row("invalid", "pi", Some("invalid"), 4),
+        ];
+        let selected = finish_rows(
+            AgentReportKind::Session,
+            rows,
+            &SharedArgs {
+                last: Some(1),
+                ..SharedArgs::default()
+            },
+        );
+        assert_eq!(selected[0].period, "a");
+        assert_eq!(selected[0].agent, "claude");
     }
 
     #[test]

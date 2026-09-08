@@ -322,7 +322,7 @@ fn leaves_the_short_alias_of_the_removed_locale_option_unused() {
 }
 
 #[test]
-fn parses_last_days_on_session_reports() {
+fn parses_last_count_on_session_reports() {
     for args in [
         vec!["ccusage", "session", "--last", "30"],
         vec!["ccusage", "claude", "session", "--last", "30"],
@@ -352,14 +352,16 @@ fn rejects_last_periods_on_unsupported_reports() {
 }
 
 #[test]
-fn rejects_last_days_alongside_an_explicit_session_window() {
+fn allows_last_count_alongside_an_explicit_session_window() {
     for option in ["--since", "--until"] {
-        assert_eq!(
-            parse_error(&[
-                "ccusage", "pi", "session", "--last", "30", option, "20260101"
-            ]),
-            "The --last option cannot be combined with --since or --until."
-        );
+        let cli = parse(&[
+            "ccusage", "pi", "session", "--last", "30", option, "20260101",
+        ]);
+        let Some(Command::Pi(args)) = cli.command else {
+            panic!("expected pi command");
+        };
+        assert_eq!(args.shared.last, Some(30));
+        assert!(args.shared.since.is_some() || args.shared.until.is_some());
     }
 }
 

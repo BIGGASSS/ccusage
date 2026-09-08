@@ -72,6 +72,43 @@ fn pi_fixture() -> Fixture {
 }
 
 fn run_cli<const N: usize>(fixture: &Fixture, args: [&str; N]) -> String {
+    run_report(fixture, &["pi", "weekly"], &args)
+}
+
+#[test]
+fn session_last_limits_rows_not_days_and_totals_follow_selection() {
+    let fixture = pi_fixture();
+    for command in [&["pi", "session"][..], &["session"][..]] {
+        let report: Value =
+            serde_json::from_str(&run_report(&fixture, command, &["--json", "--last", "1"]))
+                .unwrap();
+        let rows = report
+            .get("sessions")
+            .or_else(|| report.get("session"))
+            .unwrap()
+            .as_array()
+            .unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0]["inputTokens"], 300);
+        assert_eq!(report["totals"]["totalTokens"], 399);
+        assert_eq!(report["totals"]["totalCost"], 0.75);
+
+        let filtered: Value = serde_json::from_str(&run_report(
+            &fixture,
+            command,
+            &["--json", "--last", "1", "--until", "20260104"],
+        ))
+        .unwrap();
+        assert_eq!(filtered["totals"]["totalTokens"], 399);
+        assert_eq!(filtered["totals"]["inputTokens"], 300);
+        let oversized: Value =
+            serde_json::from_str(&run_report(&fixture, command, &["--json", "--last", "5"]))
+                .unwrap();
+        assert_eq!(oversized["totals"]["totalTokens"], 798);
+    }
+}
+
+fn run_report(fixture: &Fixture, command: &[&str], args: &[&str]) -> String {
     let output = Command::new(env!("CARGO_BIN_EXE_ccusage"))
         .env_clear()
         .env("HOME", fixture.path("empty-home"))
@@ -81,7 +118,7 @@ fn run_cli<const N: usize>(fixture: &Fixture, args: [&str; N]) -> String {
         .env("LOG_LEVEL", "0")
         .env("NO_COLOR", "1")
         .env("COLUMNS", "120")
-        .args(["pi", "weekly"])
+        .args(command)
         .args(args)
         .args([
             "--offline",
@@ -95,7 +132,7 @@ fn run_cli<const N: usize>(fixture: &Fixture, args: [&str; N]) -> String {
         .expect("ccusage CLI should run");
     assert!(
         output.status.success(),
-        "ccusage pi weekly failed: {}",
+        "ccusage report failed: {}",
         String::from_utf8_lossy(&output.stderr)
     );
     String::from_utf8(output.stdout).expect("ccusage CLI stdout should be UTF-8")
