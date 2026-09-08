@@ -40,13 +40,42 @@ pub fn run(args: AgentCommandArgs) -> Result<()> {
         log_level() != Some(0),
         shared.pricing_overrides.iter(),
     );
-    let groups = load_groups(&shared, args.kind)?;
+    let mut groups = load_groups(&shared, args.kind)?;
+    limit_session_groups(&mut groups, args.kind, shared.last);
     let speed = resolve_codex_speed(args.codex_speed);
     if wants_json(&shared) {
-        let output = report_from_groups(&groups, args.kind, &pricing, speed);
+        let mut output = report_from_groups(&groups, args.kind, &pricing, speed);
+        if args.kind == AgentReportKind::Session
+            && shared.last.is_some()
+            && matches!(shared.order, crate::cli::SortOrder::Desc)
+        {
+            for key in ["daily", "weekly", "monthly", "sessions"] {
+                if let Some(rows) = output.get_mut(key).and_then(Value::as_array_mut) {
+                    rows.reverse();
+                }
+            }
+        }
         return print_json_or_jq(output, shared.jq.as_deref(), shared.no_cost);
     }
     print_table_from_groups(&groups, args.kind, &pricing, speed, &shared)
+}
+
+fn limit_session_groups(
+    groups: &mut std::collections::BTreeMap<String, CodexGroup>,
+    kind: AgentReportKind,
+    last: Option<u32>,
+) {
+    if kind != AgentReportKind::Session || last.is_none() {
+        return;
+    }
+    let mut rows = std::mem::take(groups).into_iter().collect();
+    ccusage_adapter_common::session::limit_recent(&mut rows, last, |(id, group)| {
+        (
+            group.last_activity.as_deref().and_then(parse_ts_timestamp),
+            id.clone(),
+        )
+    });
+    *groups = rows.into_iter().collect();
 }
 
 #[doc(hidden)]
@@ -59,6 +88,77 @@ pub fn report_json(
 ) -> Result<Value> {
     let groups = aggregate_events(events, kind, timezone)?;
     Ok(report_from_groups(&groups, kind, pricing, speed.into()))
+}
+
+#[cfg(test)]
+mod session_limit_tests {
+    use super::*;
+
+    #[test]
+    fn last_sessions_uses_last_activity_and_limits_json_totals() {
+        let records: Vec<serde_json::Value> = serde_json::from_str(include_str!(
+            "../../common/tests/fixtures/session_activity.json"
+        ))
+        .unwrap();
+        let events = records
+            .iter()
+            .map(|record| CodexTokenUsageEvent {
+                session_id: record["sessionId"].as_str().unwrap().to_string(),
+                timestamp: record["timestamp"].as_str().unwrap().to_string(),
+                model: Some("test-model".to_string()),
+                input_tokens: record["inputTokens"].as_u64().unwrap(),
+                cached_input_tokens: 0,
+                cache_creation_tokens: 0,
+                output_tokens: 0,
+                reasoning_output_tokens: 0,
+                total_tokens: record["inputTokens"].as_u64().unwrap(),
+                is_fallback_model: false,
+                service_tier: None,
+            })
+            .collect::<Vec<_>>();
+        let mut groups = aggregate_events(&events, AgentReportKind::Session, None).unwrap();
+        limit_session_groups(&mut groups, AgentReportKind::Session, Some(2));
+        assert_eq!(
+            groups.keys().map(String::as_str).collect::<Vec<_>>(),
+            ["a-resumed", "m-new"]
+        );
+        let report = report_from_groups(
+            &groups,
+            AgentReportKind::Session,
+            &PricingMap::default(),
+            CodexSpeed::Standard.into(),
+        );
+        assert_eq!(report["sessions"].as_array().unwrap().len(), 2);
+        assert_eq!(report["totals"]["inputTokens"], 60);
+        assert_eq!(report["totals"]["totalTokens"], 60);
+        limit_session_groups(&mut groups, AgentReportKind::Session, Some(1));
+        assert_eq!(groups.keys().next().unwrap(), "a-resumed");
+        assert_eq!(groups["a-resumed"].input_tokens, 40);
+    }
+
+    #[test]
+    fn non_session_and_unlimited_groups_are_not_limited() {
+        for kind in [
+            AgentReportKind::Daily,
+            AgentReportKind::Weekly,
+            AgentReportKind::Monthly,
+            AgentReportKind::Session,
+        ] {
+            let mut groups = [
+                ("a".to_string(), CodexGroup::default()),
+                ("b".to_string(), CodexGroup::default()),
+            ]
+            .into_iter()
+            .collect();
+            let last = if kind == AgentReportKind::Session {
+                None
+            } else {
+                Some(1)
+            };
+            limit_session_groups(&mut groups, kind, last);
+            assert_eq!(groups.len(), 2);
+        }
+    }
 }
 
 #[cfg(test)]

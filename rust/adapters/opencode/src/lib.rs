@@ -8,6 +8,10 @@ mod parser;
 mod paths;
 mod report;
 
+#[cfg(test)]
+#[path = "../../common/src/session_tests.rs"]
+mod session_limit_tests;
+
 pub use loader::load_entries;
 pub use report::{report_json, summarize_entries};
 
@@ -30,15 +34,16 @@ pub fn run(args: AgentCommandArgs) -> Result<()> {
     let shared = args.shared;
     let mut entries = loader::load_entries(&shared, kind)?;
     filter_loaded_entries_by_date(&mut entries, &shared);
+    let mut rows = summarize_entries(&entries, kind)?;
+    ccusage_adapter_common::limit_session_rows(&mut rows, &entries, kind, shared.last);
+    sort_summaries(&mut rows, &shared.order, |row| summary_period(row));
     if wants_json(&shared) {
         return print_json_or_jq(
-            report_json(&entries, kind, &shared.order)?,
+            report::report_from_rows(&rows, kind),
             shared.jq.as_deref(),
             shared.no_cost,
         );
     }
-    let mut rows = summarize_entries(&entries, kind)?;
-    sort_summaries(&mut rows, &shared.order, |row| summary_period(row));
     print_usage_table(
         "OpenCode Token Usage Report",
         first_column(kind),

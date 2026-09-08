@@ -322,16 +322,46 @@ fn leaves_the_short_alias_of_the_removed_locale_option_unused() {
 }
 
 #[test]
-fn rejects_last_periods_on_reports_without_a_period() {
+fn parses_last_count_on_session_reports() {
     for args in [
-        ["ccusage", "session", "--last", "1"],
-        ["ccusage", "blocks", "--last", "1"],
-        ["ccusage", "codex", "session", "--last=1"],
+        vec!["ccusage", "session", "--last", "30"],
+        vec!["ccusage", "claude", "session", "--last", "30"],
+        vec!["ccusage", "codex", "session", "--last=30"],
+        vec!["ccusage", "pi", "session", "--last", "30"],
+        vec!["ccusage", "--last", "30", "session"],
     ] {
-        assert_eq!(
-            parse_error(&args),
-            "The --last option is only available for the daily, weekly, and monthly reports."
-        );
+        let cli = parse(&args);
+        let shared = match cli.command.unwrap() {
+            Command::Session(args) => args.shared,
+            Command::All(args) | Command::Codex(args) | Command::Pi(args) => {
+                assert_eq!(args.kind, AgentReportKind::Session);
+                args.shared
+            }
+            _ => panic!("expected session report"),
+        };
+        assert_eq!(shared.last, Some(30));
+    }
+}
+
+#[test]
+fn rejects_last_periods_on_unsupported_reports() {
+    assert_eq!(
+        parse_error(&["ccusage", "blocks", "--last", "1"]),
+        "The --last option is only available for the daily, weekly, monthly, and session reports."
+    );
+}
+
+#[test]
+fn allows_last_count_alongside_an_explicit_session_window() {
+    for option in ["--since", "--until"] {
+        let cli = parse(&[
+            "ccusage", "pi", "session", "--last", "30", option, "20260101",
+        ]);
+        let Some(Command::Pi(args)) = cli.command else {
+            panic!("expected pi command");
+        };
+        assert_eq!(args.shared.last, Some(30));
+        assert!(args.shared.since.is_some() || args.shared.until.is_some());
     }
 }
 
@@ -943,8 +973,8 @@ fn snapshots_cli_parse_error_guidance() {
             ]),
         }),
         json!({
-            "args": ["ccusage", "pi", "weekly"],
-            "error": parse_error(&["ccusage", "pi", "weekly"]),
+            "args": ["ccusage", "pi", "blocks"],
+            "error": parse_error(&["ccusage", "pi", "blocks"]),
         }),
     ];
 
@@ -1135,6 +1165,27 @@ fn parses_opencode_weekly_options() {
     };
     assert_eq!(args.kind, AgentReportKind::Weekly);
     assert!(args.shared.json);
+}
+
+#[test]
+fn parses_pi_weekly_options() {
+    let cli = parse(&[
+        "ccusage",
+        "pi",
+        "weekly",
+        "--json",
+        "--last",
+        "4",
+        "--pi-path",
+        "/tmp/sessions",
+    ]);
+    let Some(Command::Pi(args)) = cli.command else {
+        panic!("expected pi command");
+    };
+    assert_eq!(args.kind, AgentReportKind::Weekly);
+    assert!(args.shared.json);
+    assert_eq!(args.shared.last, Some(4));
+    assert_eq!(args.pi_path.as_deref(), Some("/tmp/sessions"));
 }
 
 #[test]

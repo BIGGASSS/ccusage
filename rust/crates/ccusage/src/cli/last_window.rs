@@ -8,6 +8,7 @@ use super::Cli;
 /// The count means "the most recent N periods of the report's own unit", so it
 /// can only be resolved once the command is known: `daily --last 1` is today,
 /// `weekly --last 1` is the current week, `monthly --last 1` is this month.
+/// Session reports limit row counts separately and do not set a date bound.
 pub(crate) fn resolve(cli: &mut Cli) -> Result<(), String> {
     let Some((shared, unit, start_of_week)) = window_target(cli) else {
         return Ok(());
@@ -66,16 +67,16 @@ fn agent_window_target(
 ) -> Option<(&mut SharedArgs, PeriodUnit, WeekDay)> {
     let unit = match args.kind {
         AgentReportKind::Daily => PeriodUnit::Day,
+        AgentReportKind::Session => return None,
         AgentReportKind::Weekly => PeriodUnit::Week,
         AgentReportKind::Monthly => PeriodUnit::Month,
-        AgentReportKind::Session => return None,
     };
     Some((&mut args.shared, unit, UNIFIED_WEEK_START))
 }
 
 #[cfg(test)]
 mod tests {
-    use ccusage_cli::{CodexSpeed, SortOrder, WeeklyArgs};
+    use ccusage_cli::{CodexSpeed, SessionArgs, SortOrder, WeeklyArgs};
 
     use super::*;
 
@@ -106,7 +107,10 @@ mod tests {
         };
         resolve(&mut cli).unwrap();
         match cli.command {
-            Some(Command::All(args)) | Some(Command::Codex(args)) => args.shared.since,
+            Some(Command::All(args) | Command::Codex(args) | Command::Pi(args)) => {
+                args.shared.since
+            }
+            Some(Command::Session(args)) => args.shared.since,
             Some(Command::Weekly(args)) => args.shared.since,
             Some(Command::Monthly(shared)) => shared.since,
             _ => panic!("unexpected command"),
@@ -136,6 +140,21 @@ mod tests {
             monthly,
             last_periods_since(PeriodUnit::Month, 1, &today, WeekDay::Monday)
         );
+    }
+
+    #[test]
+    fn leaves_session_date_windows_untouched() {
+        for command in [
+            Command::All(agent_command(AgentReportKind::Session, 30)),
+            Command::Pi(agent_command(AgentReportKind::Session, 30)),
+            Command::Codex(agent_command(AgentReportKind::Session, 30)),
+            Command::Session(SessionArgs {
+                shared: shared_with_last(30),
+                id: None,
+            }),
+        ] {
+            assert_eq!(resolved_since(command), None);
+        }
     }
 
     #[test]

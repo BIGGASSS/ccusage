@@ -1,0 +1,6 @@
+[
+	{ "sessionId": "a-resumed", "timestamp": "2026-01-01T00:00:00Z", "inputTokens": 10 },
+	{ "sessionId": "z-old", "timestamp": "2026-02-01T00:00:00Z", "inputTokens": 1000 },
+	{ "sessionId": "m-new", "timestamp": "2026-03-01T00:00:00Z", "inputTokens": 20 },
+	{ "sessionId": "a-resumed", "timestamp": "2026-04-01T00:00:00Z", "inputTokens": 30 }
+]

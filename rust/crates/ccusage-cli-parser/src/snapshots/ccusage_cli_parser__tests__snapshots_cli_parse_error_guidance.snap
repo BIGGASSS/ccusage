@@ -1,5 +1,5 @@
 ---
-source: crates/ccusage/src/cli.rs
+source: crates/ccusage-cli-parser/src/tests.rs
 expression: cases
 ---
 [
@@ -57,8 +57,8 @@ expression: cases
     "args": [
       "ccusage",
       "pi",
-      "weekly"
+      "blocks"
     ],
-    "error": "The \"weekly\" report is not available for pi-agent usage.\nUse \"ccusage pi daily\" for pi-agent usage reports."
+    "error": "The \"blocks\" report is only available for Claude Code usage.\nUse \"ccusage pi daily\" for pi-agent usage reports."
   }
 ]

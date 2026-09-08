@@ -52,6 +52,9 @@ Named stores are loaded in addition to the default `pi` agent when running `ccus
 # Show daily pi-agent usage
 ccusage pi daily
 
+# Show weekly pi-agent usage
+ccusage pi weekly
+
 # Show monthly pi-agent usage
 ccusage pi monthly
 
@@ -165,6 +168,18 @@ ccusage pi daily --since 2026-05-09 --until 2026-05-16
 # Single day
 ccusage pi daily --since 2026-05-16 --until 2026-05-16
 ```
+
+## Weekly View
+
+This view groups pi-agent usage into weeks starting on Sunday. It supports the same options as the daily view, including date filters, `--timezone`, `--pi-path`, and `--breakdown`.
+
+```bash
+ccusage pi weekly
+ccusage pi weekly --last 4
+ccusage pi weekly --json
+```
+
+JSON output contains a `weekly` array and `totals`. See [Weekly Reports](../weekly-reports.md) and [JSON Output](../json-output.md).
 
 ## Monthly View
 

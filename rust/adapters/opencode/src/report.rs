@@ -16,7 +16,7 @@ pub fn report_json(
     Ok(report_from_rows(&rows, kind))
 }
 
-fn report_from_rows(rows: &[crate::UsageSummary], kind: AgentReportKind) -> Value {
+pub(super) fn report_from_rows(rows: &[crate::UsageSummary], kind: AgentReportKind) -> Value {
     let rows_json = rows
         .iter()
         .map(|row| agent_summary_json(row, kind, false))

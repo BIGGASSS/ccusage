@@ -44,7 +44,11 @@ ccusage monthly --last 3
 
 The count is inclusive of the current period, so `--last 2` on a daily report covers yesterday and today. Weeks start on the same day the report buckets by, which is Monday everywhere except `ccusage claude weekly`, where `--start-of-week` decides.
 
-`--last` works on every daily, weekly, and monthly report, including the per-agent ones such as `ccusage codex daily --last 1`. It is not available on `session`, `blocks`, or `statusline`, which have no calendar period, and it cannot be combined with `--since`, `--until`, or `--sections`.
+`--last` works on every daily, weekly, monthly, and session report, including per-agent reports. Session reports count sessions, not days: `ccusage session --last 5` and `ccusage pi session --last 5` select the five most recently active sessions. Totals reflect only the selected sessions. `--order` controls their display order.
+
+Session reports can combine `--last` with `--since` or `--until` to select the most recent sessions within a date filter. Daily, weekly, and monthly reports cannot combine these options.
+
+`--last` is not available on `blocks` or `statusline`, and it cannot be combined with `--sections`.
 
 ### Output Format
 

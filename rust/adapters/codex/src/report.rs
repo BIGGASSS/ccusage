@@ -524,7 +524,14 @@ pub(super) fn print_table_from_groups(
         .with_terminal_width(terminal_width)
         .with_date_compaction(true);
     let mut totals = CodexTableTotals::default();
-    for (label, group) in groups {
+    let mut ordered_groups = groups.iter().collect::<Vec<_>>();
+    if kind == AgentReportKind::Session
+        && shared.last.is_some()
+        && matches!(shared.order, crate::cli::SortOrder::Desc)
+    {
+        ordered_groups.reverse();
+    }
+    for (label, group) in ordered_groups {
         let (row, input_tokens, cost) = codex_table_row(
             label,
             kind,

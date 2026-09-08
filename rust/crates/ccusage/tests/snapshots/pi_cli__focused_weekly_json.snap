@@ -1,0 +1,69 @@
+---
+source: crates/ccusage/tests/pi_cli.rs
+expression: stdout
+---
+{
+  "totals": {
+    "cacheCreationTokens": 18,
+    "cacheReadTokens": 120,
+    "inputTokens": 600,
+    "outputTokens": 60,
+    "totalCost": 1.5,
+    "totalTokens": 798
+  },
+  "weekly": [
+    {
+      "cacheCreationTokens": 3,
+      "cacheReadTokens": 20,
+      "inputTokens": 100,
+      "modelBreakdowns": [
+        {
+          "cacheCreationTokens": 3,
+          "cacheReadTokens": 20,
+          "cost": 0.25,
+          "inputTokens": 100,
+          "modelName": "[pi] gpt-5",
+          "outputTokens": 10
+        }
+      ],
+      "modelsUsed": [
+        "[pi] gpt-5"
+      ],
+      "outputTokens": 10,
+      "totalCost": 0.25,
+      "totalTokens": 133,
+      "week": "2025-12-28"
+    },
+    {
+      "cacheCreationTokens": 15,
+      "cacheReadTokens": 100,
+      "inputTokens": 500,
+      "modelBreakdowns": [
+        {
+          "cacheCreationTokens": 9,
+          "cacheReadTokens": 60,
+          "cost": 0.75,
+          "inputTokens": 300,
+          "modelName": "[pi] gpt-5-mini",
+          "outputTokens": 30
+        },
+        {
+          "cacheCreationTokens": 6,
+          "cacheReadTokens": 40,
+          "cost": 0.5,
+          "inputTokens": 200,
+          "modelName": "[pi] gpt-5",
+          "outputTokens": 20
+        }
+      ],
+      "modelsUsed": [
+        "[pi] gpt-5",
+        "[pi] gpt-5-mini"
+      ],
+      "outputTokens": 50,
+      "totalCost": 1.25,
+      "totalTokens": 665,
+      "week": "2026-01-04"
+    }
+  ]
+}

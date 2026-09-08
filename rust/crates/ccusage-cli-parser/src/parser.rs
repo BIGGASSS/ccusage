@@ -628,7 +628,7 @@ fn parse_pi_command(
     mut shared: SharedArgs,
     config: &dyn CliConfig,
 ) -> Result<Command, String> {
-    let kind = parse_agent_report_kind(parser, "pi", STANDARD_AGENT_REPORTS)?;
+    let kind = parse_agent_report_kind(parser, "pi", OPENCODE_AGENT_REPORTS)?;
     let mut pi_path = None;
     let mut codex_speed = CodexSpeed::Auto;
     config.apply_agent_args(&mut codex_speed, Some(&mut pi_path), None);
@@ -959,9 +959,9 @@ fn agent_report_supported(agent: &str, report: &str) -> bool {
             "daily" | "weekly" | "monthly" | "session" | "blocks" | "statusline"
         ),
         "codex" => matches!(report, "daily" | "monthly" | "session"),
-        "opencode" => matches!(report, "daily" | "weekly" | "monthly" | "session"),
-        "amp" | "droid" | "codebuff" | "hermes" | "pi" | "goose" | "kilo" | "copilot"
-        | "gemini" | "antigravity" | "kimi" | "qwen" | "openclaw" | "grok" | "zcode" => {
+        "opencode" | "pi" => matches!(report, "daily" | "weekly" | "monthly" | "session"),
+        "amp" | "droid" | "codebuff" | "hermes" | "goose" | "kilo" | "copilot" | "gemini"
+        | "antigravity" | "kimi" | "qwen" | "openclaw" | "grok" | "zcode" => {
             matches!(report, "daily" | "monthly" | "session")
         }
         _ => false,
@@ -1041,18 +1041,17 @@ fn parse_last_periods(value: &str) -> Result<u32, String> {
     }
 }
 
-/// `--last` counts the report's own calendar periods, so it only makes sense on
-/// the reports that group rows by day, week, or month.
+/// `--last` counts calendar periods, or rows for session reports.
 fn last_option_error(command: Option<&Command>, root_shared: &SharedArgs) -> Option<String> {
-    let (shared, supported) = match command {
-        None => (root_shared, true),
-        Some(Command::All(args)) => (&args.shared, args.kind != AgentReportKind::Session),
-        Some(Command::Daily(args)) => (&args.shared, true),
-        Some(Command::Monthly(shared)) => (shared, true),
-        Some(Command::Weekly(args)) => (&args.shared, true),
-        Some(Command::Session(args)) => (&args.shared, false),
-        Some(Command::Blocks(args)) => (&args.shared, false),
-        Some(Command::Statusline(_)) => (root_shared, false),
+    let (shared, supported, is_session) = match command {
+        None => (root_shared, true, false),
+        Some(Command::All(args)) => (&args.shared, true, args.kind == AgentReportKind::Session),
+        Some(Command::Daily(args)) => (&args.shared, true, false),
+        Some(Command::Monthly(shared)) => (shared, true, false),
+        Some(Command::Weekly(args)) => (&args.shared, true, false),
+        Some(Command::Session(args)) => (&args.shared, true, true),
+        Some(Command::Blocks(args)) => (&args.shared, false, false),
+        Some(Command::Statusline(_)) => (root_shared, false, false),
         Some(
             Command::Codex(args)
             | Command::OpenCode(args)
@@ -1071,16 +1070,16 @@ fn last_option_error(command: Option<&Command>, root_shared: &SharedArgs) -> Opt
             | Command::OpenClaw(args)
             | Command::Grok(args)
             | Command::ZCode(args),
-        ) => (&args.shared, args.kind != AgentReportKind::Session),
+        ) => (&args.shared, true, args.kind == AgentReportKind::Session),
     };
     shared.last?;
     if !supported {
         return Some(
-            "The --last option is only available for the daily, weekly, and monthly reports."
+            "The --last option is only available for the daily, weekly, monthly, and session reports."
                 .to_string(),
         );
     }
-    if shared.since.is_some() || shared.until.is_some() {
+    if !is_session && (shared.since.is_some() || shared.until.is_some()) {
         return Some("The --last option cannot be combined with --since or --until.".to_string());
     }
     if matches!(command, Some(Command::All(args)) if args.sections.is_some()) {
