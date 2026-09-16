@@ -2,8 +2,8 @@
 # dependency manifests.
 #
 # The manifest pins the CLI (and nothing else) as a dependency, so `bun.lock`
-# and `bun.nix` next to it describe the whole closure; `just gen-bun-nix`
-# regenerates them.
+# and `bun.nix` next to it describe the whole closure. After updating the lock,
+# `nix run .#generate-bun-nix` regenerates its Nix expression.
 {
   bunNodeModules,
   lib,

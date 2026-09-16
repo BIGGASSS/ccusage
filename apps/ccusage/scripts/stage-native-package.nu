@@ -1,15 +1,12 @@
-#!/usr/bin/env nix
-#! nix shell --inputs-from ../../.. nixpkgs#nushell --command nu
+#!/usr/bin/env nu
 
-use ./native-binary.nu [binary-name, linked-dylibs]
+use ./native-binary.nu [linked-dylibs]
 
 const package_dirs = {
     darwin-arm64: 'ccusage-darwin-arm64'
     darwin-x64: 'ccusage-darwin-x64'
     linux-arm64: 'ccusage-linux-arm64'
     linux-x64: 'ccusage-linux-x64'
-    win32-arm64: 'ccusage-win32-arm64'
-    win32-x64: 'ccusage-win32-x64'
 }
 def main [--platform: string, --arch: string, --binary: string] {
     let key = $"($platform)-($arch)"
@@ -23,7 +20,7 @@ def main [--platform: string, --arch: string, --binary: string] {
     let target_dir = [$repo_root, 'packages', $package_dir, 'bin'] | path join
     let target = [
         $target_dir
-        (binary-name $platform)
+        'ccusage'
     ] | path join
     mkdir $target_dir
     cp -f $source $target
@@ -32,7 +29,6 @@ def main [--platform: string, --arch: string, --binary: string] {
 }
 def finalize_target [platform: string, target: path] {
     match $platform {
-        'win32' => null
         'darwin' => {
             chmod 755 $target
             rewrite_darwin_system_libraries $target

@@ -1,5 +1,5 @@
-#!/usr/bin/env nix
-#! nix shell --inputs-from ../../.. nixpkgs#nushell --command nu
+#!/usr/bin/env nu
+
 def main [] {
     let binary_path = (match (configured_binary_path) {
         null => (error make {msg: 'Native package binary is not configured'})
@@ -14,7 +14,7 @@ def configured_binary_path [] {
     open package.json
     | get --optional files
     | default []
-    | where {|file| $file | str starts-with 'bin/ccusage' }
+    | where {|file| $file == 'bin/ccusage' }
     | get --optional 0
 }
 def binary_issue [binary_path: string, resolved: path] {
@@ -27,9 +27,6 @@ def binary_issue [binary_path: string, resolved: path] {
     }
 }
 def executable_issue [binary_path: string, resolved: path] {
-    if ($binary_path | str ends-with '.exe') {
-        return null
-    }
     match (run-external test '-x' $resolved | complete | get exit_code) {
         0 => null
         _ => $"($binary_path) is not executable"

@@ -2,16 +2,21 @@ version = 1
 name = "ccusage"
 
 [setup]
-script = """ 
+script = """
+if ! command -v nix >/dev/null 2>&1; then
+  echo 'Nix with nix-command and flakes enabled is required.' >&2
+  exit 1
+fi
 if command -v direnv >/dev/null 2>&1 && [ -f .envrc ]; then
   direnv allow
 fi
+# Realize the pinned shell without installing checkout dependencies.
+# Run nix run .#js-install explicitly if editor tooling needs node_modules.
+nix develop --command true
 """
 
 [cleanup]
 script = """
+# Clean only this environment; do not garbage-collect the user's shared store.
 rm -rf .direnv
-if command -v nix >/dev/null 2>&1; then
-  nix store gc || true
-fi
 """

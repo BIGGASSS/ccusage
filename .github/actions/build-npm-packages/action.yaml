@@ -1,0 +1,51 @@
+name: Build finished npm tarballs
+description: Build, verify, and upload immutable Nix-produced npm release artifacts
+inputs:
+  package:
+    description: Flake package containing finished tarballs
+    default: npm-tarballs
+  target:
+    description: npm platform-architecture identifier
+    required: true
+  binary-package:
+    description: Flake binary package whose Crane artifacts should be cached
+    required: true
+  launcher:
+    description: Also upload the platform-independent launcher (once per workflow)
+    default: 'false'
+runs:
+  using: composite
+  steps:
+    - uses: ./.github/actions/setup-nix-cache
+      with:
+        cache-scope: ${{ inputs.target }}
+        gc-max-store-size-linux: 4G
+
+    - name: Build and verify finished tarballs
+      shell: bash
+      env:
+        PACKAGE: ${{ inputs.package }}
+      run: nix build ".#$PACKAGE" --print-build-logs --out-link "$RUNNER_TEMP/ccusage-npm"
+
+    - name: Root current Crane artifacts for cache save
+      shell: bash
+      env:
+        BINARY_PACKAGE: ${{ inputs.binary-package }}
+      run: |
+        system="$(nix eval --impure --raw --expr builtins.currentSystem)"
+        nix build ".#packages.$system.$BINARY_PACKAGE.passthru.workspaceArtifacts.cacheRoot" \
+          --out-link "$RUNNER_TEMP/ccusage-cargo-artifacts"
+
+    # Upload the finished bytes, never a staging tree to be repacked elsewhere.
+    - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      with:
+        name: ccusage-npm-${{ inputs.target }}
+        path: ${{ runner.temp }}/ccusage-npm/ccusage-ccusage-${{ inputs.target }}-*.tgz
+        if-no-files-found: error
+
+    - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      if: inputs.launcher == 'true'
+      with:
+        name: ccusage-npm-launcher
+        path: ${{ runner.temp }}/ccusage-npm/ccusage-[0-9]*.tgz
+        if-no-files-found: error

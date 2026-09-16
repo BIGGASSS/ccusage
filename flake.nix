@@ -9,10 +9,6 @@
     };
     crane.url = "github:ipetkov/crane";
     flake-parts.url = "github:hercules-ci/flake-parts";
-    git-hooks = {
-      url = "github:cachix/git-hooks.nix";
-      inputs.nixpkgs.follows = "nixpkgs";
-    };
     litellm = {
       url = "github:BerriAI/litellm";
       flake = false;
@@ -38,15 +34,16 @@
       systems = [
         "x86_64-linux"
         "aarch64-linux"
-        "x86_64-darwin"
         "aarch64-darwin"
       ];
 
       imports = [
         inputs.treefmt-nix.flakeModule
-        inputs.git-hooks.flakeModule
+        ./nix/configuration.nix
+        ./nix/javascript.nix
+        ./nix/workflow-checks.nix
+        ./nix/npm-packages.nix
         ./nix/treefmt.nix
-        ./nix/git-hooks.nix
         ./nix/packages.nix
         ./nix/static-package.nix
         ./nix/darwin-x64-package.nix

@@ -8,9 +8,5 @@
 		"packages/*"
 	],
 	"type": "module",
-	"scripts": {
-		"preinstall": "npx only-allow pnpm"
-	},
-	"dependencies": {},
-	"packageManager": "pnpm@11.22.0"
+	"dependencies": {}
 }

@@ -22,6 +22,6 @@
 		"access": "public"
 	},
 	"scripts": {
-		"prepack": "../../apps/ccusage/scripts/verify-native-package.nu && publint"
+		"prepack": "nu ../../apps/ccusage/scripts/verify-native-package.nu && publint"
 	}
 }

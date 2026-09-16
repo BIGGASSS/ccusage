@@ -3,10 +3,10 @@
 	"compatibility_date": "2025-07-21",
 	"preview_urls": true,
 	"build": {
-		"command": "pnpm run build",
+		"command": "nix build ..#docs --out-link result",
 	},
 	"assets": {
-		"directory": ".vitepress/dist/",
+		"directory": "result/",
 		"not_found_handling": "404-page",
 	},
 }

@@ -1,7 +1,6 @@
-#!/usr/bin/env nix
-#! nix shell --inputs-from ../../.. nixpkgs#nushell --command nu
+#!/usr/bin/env nu
 
-use ./native-binary.nu [binary-name, linked-dylibs]
+use ./native-binary.nu [linked-dylibs]
 
 const system_dylib_prefixes = ['/usr/lib/', '/System/Library/']
 def main [] {
@@ -10,13 +9,15 @@ def main [] {
     )
     let target_platform = (node_platform)
     let target_arch = (node_arch)
-    let binary_name = (binary-name $target_platform)
+    if $target_platform not-in ['linux', 'darwin'] or $target_arch not-in ['x64', 'arm64'] {
+        error make {msg: $"Unsupported native package target: ($target_platform)-($target_arch)"}
+    }
+    let binary_name = 'ccusage'
     let native_package_root = (matching_native_package_root $repo_root $target_platform $target_arch)
     let native_binary = (match $native_package_root {
         null => null
         $package_root => ($package_root | path join bin $binary_name)
     })
-    let cargo_binary = $repo_root | path join rust target release $binary_name
     let version = (expected_version $repo_root)
     if (native_package_includes_binary $native_package_root $binary_name) and (has_expected_version $native_binary $version) {
         if not (is_portable_binary $target_platform $native_binary) {
@@ -24,16 +25,12 @@ def main [] {
         }
         exit 0
     }
-    ^cargo build --manifest-path ($repo_root | path join rust Cargo.toml) --release --bin ccusage --features fetch-litellm-pricing
-    if not (has_expected_version $cargo_binary $version) {
-        error make {msg: $"($cargo_binary) did not report version ($version) after cargo build"}
-    }
+    error make {msg: 'Native package is not staged at the release version. Build finished release tarballs with `nix build .#npm-tarballs` from the repository root.'}
 }
 def node_platform [] {
     match $nu.os-info.name {
         'macos' => 'darwin'
         'linux' => 'linux'
-        'windows' => 'win32'
         $other => $other
     }
 }
@@ -55,10 +52,10 @@ def matching_native_package_root [repo_root: path, target_platform: string, targ
 }
 def list_contains [value, needle: string] { (($value | describe) =~ '^list') and ($value | any {|item| $item == $needle }) }
 def expected_version [repo_root: path] {
-    let version = open ($repo_root | path join apps ccusage package.json) | get --optional version
+    let version = open ($repo_root | path join package.json) | get --optional version
     match ($version | describe) {
         'string' => $version
-        _ => (error make {msg: 'apps/ccusage/package.json version is not configured'})
+        _ => (error make {msg: 'Root package.json version is not configured'})
     }
 }
 def native_package_includes_binary [package_root, binary_name: string] {

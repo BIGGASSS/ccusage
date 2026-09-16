@@ -564,7 +564,7 @@ struct ModelsDevProvider {
 }
 
 /// The selection rules for reading a live models.dev response, generated from
-/// the pinned catalog by `just gen-models-dev-pricing`.
+/// the pinned catalog by `nix run .#generate-models-dev-pricing`.
 ///
 /// models.dev repeats every model once per catalog that serves it, and reseller
 /// catalogs carry their own promotions, markups, and looser descriptions. The

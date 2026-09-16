@@ -1,8 +1,8 @@
 # Rust workspace test run as a Nix derivation so it shares the crane
 # `cargoArtifacts` cache (warm on the per-job Blacksmith sticky disk) instead of
-# recompiling into an uncached `rust/target` on every CI run. Built by the CI
-# test job via `nix build .#ccusage-tests`; the derivation succeeds only when
-# `cargo test --workspace` passes.
+# recompiling into an uncached `rust/target` on every CI run. Included in
+# `nix flake check` and also available as `nix build .#ccusage-tests`; the same
+# derivation succeeds only when `cargo test --workspace` passes.
 { inputs, ... }:
 let
   root = ./..;
@@ -11,14 +11,10 @@ in
   perSystem =
     {
       config,
-      system,
+      pkgs,
       ...
     }:
     let
-      pkgs = import inputs.nixpkgs {
-        inherit system;
-        overlays = [ inputs.rust-overlay.overlays.default ];
-      };
       rustToolchain = pkgs.rust-bin.fromRustupToolchainFile (root + /rust-toolchain.toml);
       craneLib = (inputs.crane.mkLib pkgs).overrideToolchain rustToolchain;
       inherit (config.packages.ccusage.passthru) cargoArtifacts commonArgs;
@@ -26,6 +22,7 @@ in
       testSrc = import ./rust-src.nix { inherit nixFilter root; };
     in
     {
+      checks.ccusage-tests = config.packages.ccusage-tests;
       packages.ccusage-tests = craneLib.cargoTest (
         commonArgs
         // {

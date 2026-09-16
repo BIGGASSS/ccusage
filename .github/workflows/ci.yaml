@@ -9,19 +9,7 @@ permissions:
   contents: read
 
 jobs:
-  changes:
-    name: Detect code changes
-    runs-on: ubuntu-latest
-    outputs:
-      code-changed: ${{ steps.detect.outputs.code-changed }}
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          fetch-depth: 0
-          persist-credentials: false
-      - id: detect
-        uses: ./.github/actions/detect-code-changes
-
+  # No path filter: docs-only changes must also pass the flake checks.
   preflight:
     name: Security and lint
     runs-on: ubuntu-latest
@@ -31,24 +19,15 @@ jobs:
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup-nix-cache
-      - name: Secret scan and workflow lint
-        run: nix build --print-build-logs .#checks.x86_64-linux.gitleaks .#checks.x86_64-linux.treefmt
-      - name: Install tirith
-        run: nix profile install --inputs-from . nixpkgs#tirith
-      - name: Scan repository
-        # Snapshot fixtures intentionally contain ANSI escape sequences.
-        # Exit 2 means findings exist, but all are below the high threshold.
-        run: |
-          code=0
-          tirith scan --ci --fail-on high --exclude '*.snap' ./ || code=$?
-          case "$code" in
-            0 | 2) ;;
-            *) exit "$code" ;;
-          esac
+      - name: Secret scan, workflow lint, and repository scan
+        run: >-
+          nix build --print-build-logs
+          .#checks.x86_64-linux.gitleaks
+          .#checks.x86_64-linux.treefmt
+          .#checks.x86_64-linux.tirith
 
   test:
-    needs: [changes, preflight]
-    if: needs.changes.outputs.code-changed == 'true'
+    needs: preflight
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
@@ -56,131 +35,61 @@ jobs:
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup-nix-cache
-      - name: Run nix flake check
+      # Includes Rust, Node, performance harness, and installed npm smoke tests.
+      - name: Run all flake checks
         run: nix flake check --print-build-logs
-      - name: Run Rust tests
-        run: nix build .#ccusage-tests --print-build-logs
-      - name: JS tests
-        run: |
-          nix profile install --inputs-from . nixpkgs#pnpm nixpkgs#nodejs nixpkgs#just
-          pnpm install --frozen-lockfile
-          mkdir -p "$HOME/.claude/projects" "$HOME/.config/claude/projects"
-          just test-node
-      - name: Babashka performance harness tests
-        run: apps/ccusage/scripts/compare-pr-performance_test.clj
 
-  build-native-packages:
-    needs: [changes, preflight]
-    if: needs.changes.outputs.code-changed == 'true'
-    name: ${{ matrix.name }}
+  build-npm-packages:
+    needs: preflight
+    name: npm-${{ matrix.target }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
         include:
-          - name: build-linux-arm64
-            os: ubuntu-24.04-arm
-            platform: linux
-            arch: arm64
-            binary: result/bin/ccusage
-          - name: build-linux-x64
-            os: ubuntu-latest
-            platform: linux
-            arch: x64
-            binary: result/bin/ccusage
-          - name: build-mac-arm64
-            os: macos-15
-            platform: darwin
-            arch: arm64
-            binary: result/bin/ccusage
-          - name: build-mac-x64
-            os: macos-15
-            platform: darwin
-            arch: x64
-            binary: result/bin/ccusage
-          - name: build-windows-x64
-            os: windows-2025
-            platform: win32
-            arch: x64
-            binary: rust/target/release/ccusage.exe
+          - os: ubuntu-24.04-arm
+            target: linux-arm64
+            package: npm-tarballs
+            binary-package: ccusage-static
+            launcher: 'false'
+          - os: ubuntu-latest
+            target: linux-x64
+            package: npm-tarballs
+            binary-package: ccusage-static
+            launcher: 'true'
+          - os: macos-15
+            target: darwin-arm64
+            package: npm-tarballs
+            binary-package: ccusage
+            launcher: 'false'
+          - os: macos-15
+            target: darwin-x64
+            package: npm-darwin-x64
+            binary-package: ccusage-darwin-x64
+            launcher: 'false'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: ./.github/actions/build-linux-native-package
-        if: matrix.platform == 'linux'
+      - uses: ./.github/actions/build-npm-packages
         with:
-          arch: ${{ matrix.arch }}
-          binary: ${{ matrix.binary }}
-          nix-github-token: ${{ github.event_name != 'pull_request' }}
-          cache-scope: ${{ matrix.name }}
-      - uses: ./.github/actions/build-macos-nix-native-package
-        if: matrix.platform == 'darwin'
-        with:
-          arch: ${{ matrix.arch }}
-          binary: ${{ matrix.binary }}
-          cache-scope: ${{ matrix.name }}
-      - uses: ./.github/actions/build-windows-native-package
-        if: matrix.platform == 'win32'
-        with:
-          arch: ${{ matrix.arch }}
-          binary: ${{ matrix.binary }}
-
-  package-check:
-    name: Pack and smoke-test local packages
-    needs: [changes, build-native-packages]
-    if: needs.changes.outputs.code-changed == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: ./.github/actions/setup-nix-cache
-      - run: nix profile install --inputs-from . nixpkgs#pnpm nixpkgs#nodejs .#publint
-      - run: pnpm install --frozen-lockfile
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
-          pattern: ccusage-native-*
-          path: ${{ runner.temp }}/native-packages
-          merge-multiple: true
-      - name: Restore and pack native packages
-        run: |
-          mkdir -p "$RUNNER_TEMP/packed"
-          for archive in "$RUNNER_TEMP"/native-packages/*.tar; do
-            tar -xf "$archive"
-          done
-          for package in apps/ccusage packages/ccusage-linux-arm64 packages/ccusage-linux-x64 packages/ccusage-darwin-arm64 packages/ccusage-darwin-x64 packages/ccusage-win32-x64; do
-            (cd "$package" && pnpm pack --pack-destination "$RUNNER_TEMP/packed")
-          done
-      - name: Generate E2E fixture
-        run: .github/scripts/generate-e2e-fixture.nu "$RUNNER_TEMP/e2e-fixture"
-      - name: Test installed packages offline
-        env:
-          LOG_LEVEL: '0'
-          CLAUDE_CONFIG_DIR: ${{ runner.temp }}/e2e-fixture
-        run: |
-          mkdir -p "$RUNNER_TEMP/package-test"
-          cd "$RUNNER_TEMP/package-test"
-          npm init -y
-          npm install --offline --ignore-scripts --no-audit --no-fund "$RUNNER_TEMP/packed/ccusage-"[0-9]*.tgz "$RUNNER_TEMP/packed/ccusage-ccusage-linux-x64-"*.tgz
-          ./node_modules/.bin/ccusage --version
-          for command in daily monthly session; do
-            ./node_modules/.bin/ccusage "$command" --offline
-            ./node_modules/.bin/ccusage "$command" --offline --json | node -e "JSON.parse(require('fs').readFileSync(0, 'utf8'))"
-          done
+          package: ${{ matrix.package }}
+          target: ${{ matrix.target }}
+          binary-package: ${{ matrix.binary-package }}
+          launcher: ${{ matrix.launcher }}
 
   ci-gate:
     name: ci gate
-    needs: [changes, preflight, test, build-native-packages, package-check]
+    needs: [preflight, test, build-npm-packages]
     if: ${{ always() }}
     runs-on: ubuntu-latest
     steps:
-      - name: Report job results
+      - name: Require every job to succeed
         env:
           RESULTS: ${{ join(needs.*.result, ' ') }}
-        run: echo "$RESULTS"
-      - name: Fail when a job failed or was cancelled
-        if: ${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') }}
-        run: exit 1
+        run: |
+          echo "$RESULTS"
+          for result in $RESULTS; do
+            test "$result" = success || exit 1
+          done

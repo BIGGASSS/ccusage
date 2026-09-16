@@ -2,8 +2,8 @@
 # the `build`/`prepack` scripts of every published package.
 #
 # The dependency set sits next to this file: `bun.lock` and `bun.nix` are real
-# files that `bun install` and `bun2nix` regenerate, so bumping publint is
-# `just gen-bun-nix` instead of hand-editing a lockfile embedded in a Nix string.
+# files that `bun install` and `bun2nix` regenerate. After updating the lock,
+# run `nix run .#generate-bun-nix` instead of hand-editing the Nix expression.
 { bunCli, lib }:
 bunCli {
   toolDir = ./.;

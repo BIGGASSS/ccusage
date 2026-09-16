@@ -43,7 +43,6 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 # nix
 .direnv
 !.envrc
-.pre-commit-config.yaml
 .npmrc
 
 # generated local agent skills

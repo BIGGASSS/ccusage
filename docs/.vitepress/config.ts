@@ -9,6 +9,8 @@ export default defineConfig({
 	base: '/',
 	cleanUrls: true,
 	ignoreDeadLinks: true,
+	// Nix builds contain source files, not Git history. Avoid querying Git for dates.
+	lastUpdated: false,
 
 	head: [
 		['link', { rel: 'icon', href: '/favicon.svg' }],
@@ -131,19 +133,6 @@ export default defineConfig({
 		editLink: {
 			pattern: 'https://github.com/ryoppippi/ccusage/edit/main/docs/:path',
 			text: 'Edit this page on GitHub',
-		},
-
-		lastUpdated: {
-			text: 'Updated at',
-			formatOptions: {
-				year: 'numeric',
-				month: '2-digit',
-				day: '2-digit',
-				hour: '2-digit',
-				minute: '2-digit',
-				hour12: false,
-				timeZone: 'UTC',
-			},
 		},
 	},
 

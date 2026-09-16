@@ -48,12 +48,6 @@ importers:
       '@ccusage/ccusage-linux-x64':
         specifier: workspace:*
         version: link:../../packages/ccusage-linux-x64
-      '@ccusage/ccusage-win32-arm64':
-        specifier: workspace:*
-        version: link:../../packages/ccusage-win32-arm64
-      '@ccusage/ccusage-win32-x64':
-        specifier: workspace:*
-        version: link:../../packages/ccusage-win32-x64
 
   docs:
     devDependencies:
@@ -83,10 +77,6 @@ importers:
   packages/ccusage-linux-arm64: {}
 
   packages/ccusage-linux-x64: {}
-
-  packages/ccusage-win32-arm64: {}
-
-  packages/ccusage-win32-x64: {}
 
 packages:
 

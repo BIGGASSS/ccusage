@@ -86,6 +86,8 @@ Use `ccusage daily`, `ccusage weekly`, `ccusage monthly`, or `ccusage session` t
 
 ## Installation
 
+Supported platforms are **Linux x64/ARM64** and **macOS Intel/Apple Silicon**. Native Windows packages are not supported; use a supported Linux environment inside WSL instead. npm runners select the matching prebuilt native package; no Rust build is performed during installation. Nix runs the native CLI without requiring Node or Bun.
+
 ### Package Runners
 
 You can run ccusage directly without a global installation:
@@ -101,9 +103,6 @@ nix run github:ccusage/ccusage -- daily
 bunx ccusage
 pnpm dlx ccusage
 pnpx ccusage
-
-# PR preview builds
-bunx -p https://pkg.pr.new/ccusage/ccusage@<pr-number> ccusage --offline
 ```
 
 > [bunx](https://bun.com/docs/pm/bunx) caches the downloaded package, so repeated runs are faster after the first launch.
@@ -203,30 +202,49 @@ Further reading (Japanese): [how ccusage began](https://ryoppippi.com/blog/2025-
 <details>
 <summary>Contributor setup</summary>
 
-Contributor setup uses the Nix flake development environment with [nix-direnv](https://github.com/nix-community/nix-direnv) for pinned tools, and `just` for everyday development tasks. Install [Nix](https://nixos.org/) with the `nix-command` and `flakes` experimental features enabled, then let nix-direnv load the dev shell automatically when you enter the directory:
+Install [Nix](https://nixos.org/download/) with `nix-command` and `flakes` enabled and use sandboxed builds. The flake builds on `x86_64-linux`, `aarch64-linux`, and `aarch64-darwin`. Intel macOS npm packages are cross-built on Apple Silicon (`nix build .#npm-darwin-x64`); the locked nixpkgs no longer supports a native Intel Mac development shell. Native Windows is unsupported; Linux in WSL is supported.
 
 ```sh
-# Clone the repository
 git clone https://github.com/ccusage/ccusage.git
 cd ccusage
-
-# Allow direnv to load the Nix dev shell
-direnv allow
+nix develop # Optional pinned development shell
+# Optional alternative with nix-direnv configured: direnv allow
 ```
 
-The dev shell provides the pinned `pnpm`, Rust toolchain, GitHub CLI, git hooks, generated local agent skills, package tooling, and project utilities from `flake.nix`. Run `pnpm install --frozen-lockfile` only when a task needs workspace `node_modules`.
-
-Run project tasks with `just` from inside the Nix environment (`just --list` shows every recipe):
+Run the following commands from the repository root; entering the shell is optional:
 
 ```sh
-just fmt
-just test
-just check
+nix build .#ccusage .#docs .#npm-tarballs # Native CLI, docs, and tested host npm tarballs
+nix build ".#checks.$(nix eval --impure --raw --expr builtins.currentSystem).js-typecheck"
+
+# Hermetic Rust, Node, and performance-harness tests
+system=$(nix eval --impure --raw --expr builtins.currentSystem)
+nix build ".#checks.$system.ccusage-tests" \
+  ".#checks.$system.node-tests" \
+  ".#checks.$system.performance-harness"
+
+nix flake check # Every flake check
+nix fmt
 ```
 
-### Nix Package
+A cold invocation may fetch locked sources, dependencies, and tools; sandboxed builds and tests do not install from registries. Offline reuse requires the necessary Nix closure to be present already.
 
-The flake exposes `ccusage` as the default package and app:
+Entering the shell, formatting, and generating schemas never install checkout dependencies. For editor tooling, explicitly run `nix run .#js-install`. It copies **only** Nix-managed `node_modules`, including the separate models.dev tool dependencies, into the current checkout offline after Nix has realized the dependency closure. Hermetic builds do not use checkout `node_modules`.
+
+`nix run .#docs-dev` explicitly refreshes these dependencies and starts pinned VitePress; `nix run .#docs-preview` serves the immutable Nix-built site. For imperative Rust edit/run loops, run from the repository root:
+
+```sh
+nix develop --command cargo run --locked --manifest-path rust/Cargo.toml --bin ccusage -- codex daily --offline
+nix develop --command cargo test --locked --manifest-path rust/Cargo.toml -p ccusage-core
+```
+
+These use the pinned shell and Cargo `--locked`, but local Cargo caches are not hermetic build outputs.
+
+Dependency updates are separate networked maintenance: run `nix develop --command pnpm install --lockfile-only --ignore-scripts`, update the `pnpmDeps` hash in `nix/javascript.nix`, then run `nix run .#js-install`. Update standalone tool `bun.lock` files explicitly with the pinned Bun before running `nix run .#generate-bun-nix`; that generator does not install or re-resolve dependencies. See [CONTRIBUTING.md](https://github.com/ccusage/ccusage/blob/main/CONTRIBUTING.md) for the complete procedure.
+
+### Nix Package and Generated Inputs
+
+The flake exposes `ccusage` as its default package and app:
 
 ```sh
 nix run github:ccusage/ccusage
@@ -234,15 +252,26 @@ nix run github:ccusage/ccusage -- codex daily --offline
 nix build github:ccusage/ccusage
 ```
 
-Nix builds embed the LiteLLM pricing file from the locked `litellm` flake input, so sandboxed builds do not fetch pricing at build time. To update the locked pricing snapshot:
+Builds and the development shell use the LiteLLM snapshot from the locked flake input instead of downloading pricing during compilation. Update generated files with pinned tools:
 
-Non-Nix Cargo builds read the same locked LiteLLM revision from `flake.lock` and fetch the pricing file from that revision at build time.
+```sh
+nix run .#generate-schema
+nix run .#generate-models-dev-pricing
 
-```bash
-just update-litellm-pricing
+# Networked pricing input updates, then validation
+nix flake update litellm
+nix flake check
+
+nix flake update models-dev
+nix run .#generate-models-dev-pricing
+nix flake check
 ```
 
-The scheduled `update pricing` workflow runs the same update and validation, then opens a PR when the pricing snapshot changes.
+### Releases
+
+Nix builds and validates the exact npm tarballs that are published; publishing does not rebuild them or use a networked prepack fallback. `npm-tarballs` provides the launcher and the host-native package. The release workflow collects all four native targets plus the launcher.
+
+GitHub runners, artifact transport, GitHub permissions, and registry credentials remain external networked infrastructure. The pinned `tagpr` and `npm-publish` apps do not supply credentials. GitHub OIDC publishing requires npm trusted-publisher configuration for every package, matching the repository and release workflow, plus `id-token: write` on the publishing job. See the contribution guide for release details.
 
 </details>
 

@@ -7,17 +7,18 @@ in
     {
       config,
       system,
+      pkgs,
       ...
     }:
     let
-      pkgs = import inputs.nixpkgs {
-        inherit system;
-        overlays = [ inputs.rust-overlay.overlays.default ];
-      };
       rustToolchain = pkgs.rust-bin.fromRustupToolchainFile (root + /rust-toolchain.toml);
     in
     {
       devShells.default = pkgs.mkShell {
+        # Nix owns tool versions; pnpm must never auto-download a replacement.
+        pnpm_config_pm_on_fail = "ignore";
+        pnpm_config_manage_package_manager_versions = "false";
+        pnpm_config_update_notifier = "false";
         # Hand cargo the pinned LiteLLM snapshot the way the Nix packages do, so
         # `cargo build` in the dev shell stays offline and does not need the
         # fetch-litellm-pricing feature's rustls stack.
@@ -30,6 +31,7 @@ in
             bun
             inputs.bun2nix.packages.${system}.default
             nushell
+            babashka
             config.packages.cargo-hawk
             config.packages.publint
 
@@ -49,8 +51,6 @@ in
             actionlint
             zizmor
             oxlint
-            just
-            prek
             gitleaks
             jq
             git
@@ -70,8 +70,7 @@ in
           ]
           ++ pkgs.lib.optionals pkgs.stdenv.isDarwin [
             pkgs.apple-sdk_15
-          ]
-          ++ config.pre-commit.settings.enabledPackages;
+          ];
 
         shellHook = ''
           if [ "$(uname -s)" = "Linux" ]; then
@@ -80,9 +79,6 @@ in
               *) export RUSTFLAGS="''${RUSTFLAGS:+$RUSTFLAGS }-C link-arg=-fuse-ld=mold" ;;
             esac
           fi
-
-          # Dependency installation is explicit: run `just install` as needed.
-          ${config.pre-commit.shellHook}
         '';
       };
     };

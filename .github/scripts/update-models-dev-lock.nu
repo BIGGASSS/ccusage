@@ -21,7 +21,7 @@ def main [] {
     }
 
     ^nix flake update models-dev
-    ^nix develop --command just gen-models-dev-pricing
+    ^nix run .#generate-models-dev-pricing
 
     let state = {
         snapshots: (dirty ...$SNAPSHOTS)

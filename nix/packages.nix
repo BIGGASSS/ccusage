@@ -9,13 +9,10 @@ in
   perSystem =
     {
       system,
+      pkgs,
       ...
     }:
     let
-      pkgs = import inputs.nixpkgs {
-        inherit system;
-        overlays = [ inputs.rust-overlay.overlays.default ];
-      };
       rustToolchain = pkgs.rust-bin.fromRustupToolchainFile (root + /rust-toolchain.toml);
       craneLib = (inputs.crane.mkLib pkgs).overrideToolchain rustToolchain;
       ccusage = import ../default.nix {
@@ -38,8 +35,8 @@ in
       };
       changelogithub = pkgs.callPackage ../nix/tools/changelogithub { inherit bunCli; };
       # Regeneration-only output for committed models.dev snapshots;
-      # `just gen-models-dev-pricing` builds this and copies them into the source
-      # tree. It is not part of the ccusage build, which embeds the committed files.
+      # `nix run .#generate-models-dev-pricing` builds this and copies them into
+      # the source tree. The ccusage build only embeds the committed files.
       models-dev-pricing = pkgs.callPackage ../nix/tools/models-dev-gen {
         inherit bunNodeModules;
         modelsDevSrc = inputs.models-dev;
