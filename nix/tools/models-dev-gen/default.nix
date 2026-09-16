@@ -5,7 +5,7 @@
 # and `zod`, resolved by bun2nix from the `package.json` next to this file.
 #
 # The build outputs are copied into the repository (see
-# `just gen-models-dev-pricing`) and embedded at build time, so every platform
+# `nix run .#generate-models-dev-pricing`) and embedded at build time, so every platform
 # ships identical pinned data without build-time network access.
 {
   pkgs,
@@ -15,7 +15,7 @@
 let
   # Keep the versions in the sibling `package.json` matching the `remeda` and
   # `zod` entries in `${modelsDevSrc}/bun.lock` whenever the input is bumped,
-  # then run `just gen-bun-nix`.
+  # update the tool's Bun lock, then run `nix run .#generate-bun-nix`.
   nodeModules = bunNodeModules { toolDir = ./.; };
 in
 pkgs.runCommand "models-dev-snapshots"

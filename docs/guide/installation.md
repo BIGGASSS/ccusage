@@ -2,6 +2,17 @@
 
 ccusage can be installed and used in several ways depending on your preferences and use case.
 
+## Supported Platforms
+
+The native CLI and npm packages support four platforms:
+
+- Linux x64 (`x86_64-linux` in Nix)
+- Linux ARM64 (`aarch64-linux`)
+- macOS Intel (npm package cross-built on Apple Silicon)
+- macOS Apple Silicon (`aarch64-darwin`)
+
+Native Windows is unsupported. Windows users can run the Linux version inside WSL, with their package runner or Nix installed inside that Linux environment. npm installations use prebuilt native packages; they do not compile Rust during installation.
+
 ## Why Direct Execution Works Well
 
 You do not need to install ccusage globally before trying it. Direct package runners work well for ad hoc usage:
@@ -28,8 +39,8 @@ pnpm dlx ccusage
 npx ccusage@latest
 ```
 
-```bash [pkg.pr.new preview]
-bunx -p https://pkg.pr.new/ccusage/ccusage@<pr-number> ccusage --offline
+```bash [Nix]
+nix run github:ccusage/ccusage -- daily
 ```
 
 :::
@@ -80,41 +91,57 @@ ccusage monthly --breakdown
 ccusage blocks --live
 ```
 
+## Nix Installation
+
+The flake supports Linux x64/ARM64 and macOS Apple Silicon build hosts. Intel Mac users should use the prebuilt npm package: the locked nixpkgs no longer supports native Intel macOS builds or development shells.
+
+Install [Nix](https://nixos.org/download/) with the `nix-command` and `flakes` experimental features enabled. Nix runs the native CLI without Node.js or Bun:
+
+```bash
+nix run github:ccusage/ccusage -- daily --offline
+nix profile add github:ccusage/ccusage
+```
+
+A cold Nix invocation needs network access for locked sources, dependencies, toolchains, or binary-cache artifacts. The actual builds run offline in the Nix sandbox; subsequent offline use requires those inputs to be cached. ccusage's `--offline` option controls runtime pricing access, not Nix or package-manager downloads.
+
 ## Development Installation
 
-For development or contributing to ccusage:
+Use Nix with sandboxed builds; you do not need a host Node, pnpm, Bun, or Rust installation. Clone the repository:
 
 ```bash
-# Clone the repository
 git clone https://github.com/ccusage/ccusage.git
 cd ccusage
-
-# Allow direnv to load the Nix dev shell
-direnv allow
+nix develop # Optional pinned development shell
+# Optional alternative with nix-direnv configured: direnv allow
 ```
 
-The Nix dev shell provides the pinned `pnpm`, Rust toolchain, GitHub CLI, git hooks, package tooling, and project utilities. Run project tasks with `just`:
+Run the following commands from the repository root; entering the shell is optional:
 
 ```bash
-# Format the tree
-just fmt
+nix fmt
+nix build ".#checks.$(nix eval --impure --raw --expr builtins.currentSystem).js-typecheck"
 
-# Run tests
-just test
+# Hermetic Rust, Node, and performance-harness tests
+system=$(nix eval --impure --raw --expr builtins.currentSystem)
+nix build ".#checks.$system.ccusage-tests" \
+  ".#checks.$system.node-tests" \
+  ".#checks.$system.performance-harness"
 
-# Run static checks
-just check
-
-# Build distribution
-just build
+nix flake check # Every flake check
+nix build .#ccusage .#docs .#npm-tarballs # Native CLI, docs, and tested host npm tarballs
 ```
 
-You can also run the package directly from source:
+The shell, formatter, and schema generator do not install checkout dependencies. Builds and checks use an immutable JS workspace. For editor tooling, explicitly run `nix run .#js-install`: it copies only Nix-managed `node_modules`, including the separate models.dev tool dependencies, into your checkout. The copy is offline, but Nix may first need to fetch the locked closure. It does not run a registry install or overwrite source files.
+
+`nix run .#docs-dev` explicitly performs that copy and runs pinned VitePress. `nix run .#docs-preview` serves the Nix-built site. For an imperative Rust edit/run loop using the pinned shell and Cargo `--locked`, run from the repository root:
 
 ```bash
-pnpm --filter ccusage start daily
-pnpm --filter ccusage start monthly --json
+nix develop --command cargo run --locked --manifest-path rust/Cargo.toml --bin ccusage -- daily --offline
+nix develop --command cargo run --locked --manifest-path rust/Cargo.toml --bin ccusage -- monthly --json --offline
+nix develop --command cargo test --locked --manifest-path rust/Cargo.toml -p ccusage-core
 ```
+
+These local loops reuse mutable Cargo caches and are not substitutes for hermetic checks. Dependency updates are separate: run `nix develop --command pnpm install --lockfile-only --ignore-scripts`, update the `pnpmDeps` hash in `nix/javascript.nix`, then run `nix run .#js-install`. Standalone tool Bun locks are updated explicitly before running `nix run .#generate-bun-nix`. See [CONTRIBUTING.md](https://github.com/ccusage/ccusage/blob/main/CONTRIBUTING.md) for full procedures and the release network/credential boundary.
 
 ## Runtime Requirements
 
@@ -148,7 +175,13 @@ ccusage daily
 
 ### Direct Execution (npx/bunx)
 
-Always gets the latest version automatically.
+Use an explicit `@latest` version when requesting the current release. Package runners may otherwise reuse cached versions.
+
+### Nix
+
+```bash
+nix profile upgrade ccusage
+```
 
 ### Global Installation
 
@@ -233,10 +266,9 @@ If installation fails due to network issues:
 ```bash
 # Try with different registry
 npm install -g ccusage --registry https://registry.npmjs.org
-
-# Or use bunx for offline-capable runs
-bunx ccusage
 ```
+
+Package runners still need network access for uncached packages. Likewise, Nix needs to fetch uncached inputs before its sandboxed build can run. The CLI's `--offline` flag does not bypass installation downloads.
 
 ### Version Conflicts
 

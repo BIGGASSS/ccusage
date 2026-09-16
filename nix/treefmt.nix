@@ -11,32 +11,12 @@ in
     {
       config,
       system,
+      pkgs,
       ...
     }:
     let
-      pkgs = import inputs.nixpkgs {
-        inherit system;
-        overlays = [ inputs.rust-overlay.overlays.default ];
-      };
       rustToolchain = pkgs.rust-bin.fromRustupToolchainFile (root + /rust-toolchain.toml);
-      craneLib = (inputs.crane.mkLib pkgs).overrideToolchain rustToolchain;
-      inherit (config.packages.ccusage.passthru) commonArgs workspaceArtifacts;
-      # The generator only needs the config layer, so it starts from the foundation
-      # artifacts rather than the adapter ones: this derivation gates the CI
-      # preflight, and waiting for 15 adapters there would delay every build job.
-      cargoArtifacts = workspaceArtifacts.foundation;
-      generateConfigSchema = craneLib.buildPackage (
-        commonArgs
-        // {
-          pname = "generate-config-schema";
-          inherit cargoArtifacts;
-          cargoExtraArgs = "-p ccusage-config --bin generate-config-schema";
-          doCheck = false;
-          meta = {
-            mainProgram = "generate-config-schema";
-          };
-        }
-      );
+      generateConfigSchema = config.packages.generate-config-schema;
       schemaGen = pkgs.writeShellApplication {
         name = "ccusage-schema-gen";
         runtimeInputs = [
@@ -218,18 +198,9 @@ in
         };
       };
 
-      # `nix run .#generate-schema` regenerates apps/ccusage/config-schema.json
-      # (and the docs copy) from the current Rust source. It reuses the exact
-      # script the treefmt formatter and the config-schema flake check rely on,
-      # so the three can never drift apart. Run it from the repo root.
-      apps.generate-schema = {
-        type = "app";
-        program = lib.getExe schemaGen;
-      };
       # `nix run .#generate-bun-nix` derives every committed bun.nix from its
-      # sibling bun.lock. Renovate uses this before committing dependency
-      # updates, while contributors can use `just gen-bun-nix` when a manifest
-      # also needs Bun to resolve a new lockfile.
+      # sibling bun.lock. Run it after updating tool locks with Bun;
+      # Renovate also uses it before committing dependency updates.
       apps.generate-bun-nix = {
         type = "app";
         program = lib.getExe generateBunNix;

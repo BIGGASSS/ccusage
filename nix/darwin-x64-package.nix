@@ -10,6 +10,7 @@
 # Intel Macs (verified: `otool -L` shows only /usr/lib/libSystem.B.dylib).
 {
   inputs,
+  lib,
   ...
 }:
 let
@@ -19,16 +20,10 @@ in
   perSystem =
     {
       config,
-      system,
+      pkgs,
       ...
     }:
-    let
-      pkgs = import inputs.nixpkgs {
-        inherit system;
-        overlays = [ inputs.rust-overlay.overlays.default ];
-      };
-    in
-    pkgs.lib.mkIf pkgs.stdenv.isDarwin {
+    lib.mkIf pkgs.stdenv.isDarwin {
       packages.ccusage-darwin-x64 =
         let
           target = "x86_64-apple-darwin";

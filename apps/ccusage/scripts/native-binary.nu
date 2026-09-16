@@ -1,11 +1,13 @@
 # Shared helpers for the scripts that stage and validate the Rust binary
 # shipped inside packages/ccusage-<platform>-<arch>.
 
-# The file name npm expects for a Node platform identifier.
+# Only the Linux and macOS native packages are supported. Windows users can
+# run the Linux package inside WSL; do not silently stage a Windows artifact.
 export def binary-name [platform: string]: nothing -> string {
     match $platform {
-        'win32' => 'ccusage.exe'
-        _ => 'ccusage'
+        'linux' => 'ccusage'
+        'darwin' => 'ccusage'
+        _ => { error make {msg: $"Unsupported native platform: ($platform). Use Linux or macOS."} }
     }
 }
 

@@ -2,8 +2,8 @@
 #
 # Each tool directory holds a `package.json`, the `bun.lock` that `bun install`
 # resolved from it, and the `bun.nix` that `bun2nix` derived from that lockfile
-# (regenerate both with `just gen-bun-nix`). bun2nix fetches every tarball as a
-# fixed-output derivation, so the install below needs no network access.
+# (regenerate the latter with `nix run .#generate-bun-nix`). bun2nix fetches every
+# tarball as a fixed-output derivation, so the install below needs no network access.
 {
   bun2nix,
   lib,

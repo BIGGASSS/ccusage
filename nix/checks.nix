@@ -7,18 +7,14 @@ in
     {
       config,
       system,
+      pkgs,
       ...
     }:
     let
-      pkgs = import inputs.nixpkgs {
-        inherit system;
-        overlays = [ inputs.rust-overlay.overlays.default ];
-      };
       rustToolchain = pkgs.rust-bin.fromRustupToolchainFile (root + /rust-toolchain.toml);
       craneLib = (inputs.crane.mkLib pkgs).overrideToolchain rustToolchain;
       inherit (config.packages.ccusage.passthru)
         cargoArtifacts
-        workspaceArtifacts
         commonArgs
         version
         ;
@@ -70,23 +66,11 @@ in
       # Build the schema generator straight from the current Rust source so the
       # drift check below can never go stale: it always reflects whatever
       # `rust/crates/ccusage/src/config_schema.rs` looks like right now.
-      generateConfigSchema = craneLib.buildPackage (
-        commonArgs
-        // {
-          pname = "generate-config-schema";
-          # Only the config layer is needed, so skip the adapter artifacts.
-          cargoArtifacts = workspaceArtifacts.foundation;
-          cargoExtraArgs = "-p ccusage-config --bin generate-config-schema";
-          doCheck = false;
-          meta = {
-            mainProgram = "generate-config-schema";
-          };
-        }
-      );
+      generateConfigSchema = config.packages.generate-config-schema;
       # Fail `nix flake check` when the committed config schema drifts from what
       # the Rust source generates. This catches PRs that add or change a config
       # field without regenerating the schema (run
-      # `just ccusage::generate-schema` to fix). Only the tracked
+      # `nix run .#generate-schema` to fix). Only the tracked
       # apps/ccusage/config-schema.json is checked; docs/public/config-schema.json
       # is a gitignored build copy.
       config-schema =
@@ -109,7 +93,7 @@ in
 
             if ! diff -u apps/ccusage/config-schema.json generated.json; then
               echo "ERROR: apps/ccusage/config-schema.json is out of sync with the Rust schema source." >&2
-              echo "Run 'nix run .#generate-schema' (or 'just ccusage::generate-schema') and commit the result." >&2
+              echo "Run 'nix run .#generate-schema' and commit the result." >&2
               exit 1
             fi
 
@@ -132,7 +116,7 @@ in
               (cd "$toolDir" && bun2nix -o generated.nix)
               if ! diff -u "$toolDir/bun.nix" "$toolDir/generated.nix"; then
                 echo "ERROR: $toolDir/bun.nix is out of sync with $lockfile." >&2
-                echo "Run 'just gen-bun-nix' and commit the result." >&2
+                echo "Run 'nix run .#generate-bun-nix' and commit the result." >&2
                 exit 1
               fi
             done
@@ -153,12 +137,8 @@ in
           '';
     in
     {
-      # `nix flake check` deliberately omits a full `config.packages.ccusage`
-      # build: ccusage-clippy already compiles the entire workspace with
-      # `--all-targets` (catching any build break), and the build-native-packages
-      # CI job produces and verifies the actual release binary. Building the
-      # optimized native package here too only duplicated a ~70s release compile
-      # on cache-cold runners.
+      # Rust, JS, docs and finished-package tests are added by the other flake
+      # modules. These checks cover linting, schema and package metadata.
       checks = {
         inherit
           bun-nix
@@ -197,8 +177,6 @@ in
                 ["@ccusage/ccusage-darwin-x64", ["bin/ccusage"]],
                 ["@ccusage/ccusage-linux-arm64", ["bin/ccusage"]],
                 ["@ccusage/ccusage-linux-x64", ["bin/ccusage"]],
-                ["@ccusage/ccusage-win32-arm64", ["bin/ccusage.exe"]],
-                ["@ccusage/ccusage-win32-x64", ["bin/ccusage.exe"]],
               ]);
 
               function touchGeneratedFile(packageDir, relativePath) {

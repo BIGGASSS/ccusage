@@ -7,15 +7,14 @@
 #     work but NOT portable to end-user machines.
 #   * `ccusage-static` (this file) cross-compiles to musl and links fully
 #     statically, producing the portable binary that the release jobs in
-#     `tagpr.yaml` ship to npm. The release matrix runs
-#     `nix build .#ccusage-static` for Linux;
-#     macOS arm64 uses the native Nix build, while macOS x64 and Windows fall
-#     back to `cargo build` because Nix cannot target those runners.
+#     `release.yaml` ship inside `npm-tarballs`. macOS arm64 uses the native
+#     Nix build; macOS x64 uses ccusage-darwin-x64. Windows is not supported.
 #
 # So Linux release artifacts must come from `.#ccusage-static`, never the
 # default `.#ccusage`, which would embed unusable `/nix/store` paths.
 {
   inputs,
+  lib,
   ...
 }:
 let
@@ -26,15 +25,10 @@ in
     {
       config,
       system,
+      pkgs,
       ...
     }:
-    let
-      pkgs = import inputs.nixpkgs {
-        inherit system;
-        overlays = [ inputs.rust-overlay.overlays.default ];
-      };
-    in
-    pkgs.lib.mkIf pkgs.stdenv.isLinux {
+    lib.mkIf pkgs.stdenv.isLinux {
       packages.ccusage-static =
         let
           linuxStaticTarget =

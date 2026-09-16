@@ -23,18 +23,31 @@ void describe(resolveCliRuntime.name, () => {
 		assert.equal(actual, '/native/bin/ccusage');
 	});
 
-	void it('resolves the Windows native package binary with the exe suffix', () => {
-		const actual = resolveNativeBinary({
-			arch: 'arm64',
-			platform: 'win32',
-			resolvePath: (id) => {
-				assert.equal(id, '@ccusage/ccusage-win32-arm64/bin/ccusage.exe');
-				return 'C:\\native\\bin\\ccusage.exe';
-			},
-		});
+	for (const platform of ['linux', 'darwin']) {
+		for (const arch of ['x64', 'arm64']) {
+			void it(`resolves ${platform}-${arch}`, () => {
+				assert.equal(
+					resolveNativeBinary({ arch, platform, resolvePath: (id) => id }),
+					`@ccusage/ccusage-${platform}-${arch}/bin/ccusage`,
+				);
+			});
+		}
+	}
 
-		assert.equal(actual, 'C:\\native\\bin\\ccusage.exe');
-	});
+	for (const [platform, arch] of [
+		['win32', 'x64'],
+		['win32', 'arm64'],
+		['linux', 'ia32'],
+	]) {
+		void it(`rejects unsupported ${platform}-${arch} without resolving a package`, () => {
+			const resolvePath = mock.fn((id: string) => id);
+			assert.equal(resolveNativeBinary({ arch, platform, resolvePath }), undefined);
+			assert.equal(resolvePath.mock.callCount(), 0);
+			assert.deepEqual(resolveCliRuntime({ arch, platform, argv: [], nativeBinaryPath: null }), {
+				errorMessage: `ccusage does not support ${platform}-${arch}. Supported platforms are Linux and macOS (x64 and arm64).\n`,
+			});
+		});
+	}
 
 	void it('prefers the matching native package binary when it is available', () => {
 		assert.deepEqual(
@@ -71,7 +84,6 @@ void describe(resolveCliRuntime.name, () => {
 			ensureNativeBinaryExecutable({
 				binaryPath: '/native/bin/ccusage',
 				chmodPath,
-				platform: 'linux',
 				statPath: () => ({ mode: 0o644 }),
 			}),
 			undefined,
@@ -89,23 +101,7 @@ void describe(resolveCliRuntime.name, () => {
 			ensureNativeBinaryExecutable({
 				binaryPath: '/native/bin/ccusage',
 				chmodPath,
-				platform: 'darwin',
 				statPath: () => ({ mode: 0o755 }),
-			}),
-			undefined,
-		);
-		assert.equal(chmodPath.mock.callCount(), 0);
-	});
-
-	void it('does not chmod Windows native binaries', () => {
-		const chmodPath = mock.fn();
-
-		assert.equal(
-			ensureNativeBinaryExecutable({
-				binaryPath: 'C:\\native\\bin\\ccusage.exe',
-				chmodPath,
-				platform: 'win32',
-				statPath: () => ({ mode: 0o644 }),
 			}),
 			undefined,
 		);
@@ -135,7 +131,6 @@ void describe(createNativeSpawner.name, () => {
 		);
 		const spawnProcess = mock.fn(() => child);
 		const spawnNative = createNativeSpawner({
-			platform: 'linux',
 			signalSource,
 			spawnProcess,
 		});
@@ -170,41 +165,6 @@ void describe(createNativeSpawner.name, () => {
 		]);
 	});
 
-	void it('forwards the supported Windows console signals', async () => {
-		const signalSource = new EventEmitter();
-		const kill = mock.fn(() => true);
-		const child = /** @type {import('node:child_process').ChildProcess} */ (
-			/** @type {unknown} */ (Object.assign(new EventEmitter(), { kill }))
-		);
-		const spawnNative = createNativeSpawner({
-			platform: 'win32',
-			signalSource,
-			spawnProcess: () => child,
-		});
-
-		const resultPromise = spawnNative('/native/bin/ccusage.exe', []);
-		assert.deepEqual(
-			['SIGINT', 'SIGBREAK', 'SIGHUP'].map((signal) => signalSource.listenerCount(signal)),
-			[1, 1, 1],
-		);
-		signalSource.emit('SIGINT');
-		signalSource.emit('SIGBREAK');
-		signalSource.emit('SIGHUP');
-		signalSource.emit('SIGTERM');
-		assert.equal(signalSource.listenerCount('SIGTERM'), 0);
-		assert.deepEqual(
-			kill.mock.calls.map((call) => call.arguments),
-			[['SIGINT'], ['SIGBREAK'], ['SIGHUP']],
-		);
-		child.emit('exit', 0, null);
-
-		assert.deepEqual(await resultPromise, { signal: null, status: 0 });
-		assert.deepEqual(
-			['SIGINT', 'SIGBREAK', 'SIGHUP'].map((signal) => signalSource.listenerCount(signal)),
-			[0, 0, 0],
-		);
-	});
-
 	void it('removes signal listeners after the child exits', async () => {
 		const signalSource = new EventEmitter();
 		const kill = mock.fn(() => true);
@@ -212,7 +172,6 @@ void describe(createNativeSpawner.name, () => {
 			/** @type {unknown} */ (Object.assign(new EventEmitter(), { kill }))
 		);
 		const spawnNative = createNativeSpawner({
-			platform: 'linux',
 			signalSource,
 			spawnProcess: () => child,
 		});
@@ -238,7 +197,6 @@ void describe(createNativeSpawner.name, () => {
 			/** @type {unknown} */ (Object.assign(new EventEmitter(), { kill }))
 		);
 		const spawnNative = createNativeSpawner({
-			platform: 'linux',
 			signalSource,
 			spawnProcess: () => child,
 		});

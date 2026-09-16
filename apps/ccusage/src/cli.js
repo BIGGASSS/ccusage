@@ -45,24 +45,7 @@ function getNativePackageName(platform = process.platform, arch = process.arch) 
 		return undefined;
 	}
 
-	if (platform === 'win32') {
-		if (arch === 'arm64') {
-			return '@ccusage/ccusage-win32-arm64';
-		}
-		if (arch === 'x64') {
-			return '@ccusage/ccusage-win32-x64';
-		}
-	}
-
 	return undefined;
-}
-
-/**
- * @param {string} [platform]
- * @returns {string}
- */
-function getNativeBinarySubpath(platform = process.platform) {
-	return platform === 'win32' ? 'bin/ccusage.exe' : 'bin/ccusage';
 }
 
 /**
@@ -80,7 +63,7 @@ function resolveNativeBinary({
 	}
 
 	try {
-		return resolvePath(`${packageName}/${getNativeBinarySubpath(platform)}`);
+		return resolvePath(`${packageName}/bin/ccusage`);
 	} catch {
 		return undefined;
 	}
@@ -93,9 +76,14 @@ function resolveNativeBinary({
 function resolveCliRuntime({
 	argv,
 	arch = process.arch,
-	nativeBinaryPath = resolveNativeBinary(),
 	platform = process.platform,
+	nativeBinaryPath = resolveNativeBinary({ arch, platform }),
 }) {
+	if (getNativePackageName(platform, arch) == null) {
+		return {
+			errorMessage: `ccusage does not support ${platform}-${arch}. Supported platforms are Linux and macOS (x64 and arm64).\n`,
+		};
+	}
 	if (nativeBinaryPath != null) {
 		return {
 			args: argv,
@@ -117,19 +105,10 @@ function errorMessage(error) {
 }
 
 /**
- * @param {{ binaryPath: string; chmodPath?: (path: string, mode: number) => void; platform?: string; statPath?: (path: string) => FileMode }} options
+ * @param {{ binaryPath: string; chmodPath?: (path: string, mode: number) => void; statPath?: (path: string) => FileMode }} options
  * @returns {string | undefined}
  */
-function ensureNativeBinaryExecutable({
-	binaryPath,
-	chmodPath = chmodSync,
-	platform = process.platform,
-	statPath = statSync,
-}) {
-	if (platform === 'win32') {
-		return undefined;
-	}
-
+function ensureNativeBinaryExecutable({ binaryPath, chmodPath = chmodSync, statPath = statSync }) {
 	try {
 		const mode = statPath(binaryPath).mode;
 		if ((mode & 0o111) !== 0) {
@@ -160,27 +139,12 @@ function isMainModule({ argvEntry = process.argv[1], moduleUrl, realpathPath = r
 }
 
 /**
- * @param {string} [platform]
- * @returns {NodeJS.Signals[]}
- */
-function getForwardedSignals(platform = process.platform) {
-	if (platform === 'win32') {
-		return ['SIGINT', 'SIGBREAK', 'SIGHUP'];
-	}
-
-	return ['SIGINT', 'SIGTERM', 'SIGHUP', 'SIGQUIT'];
-}
-
-/**
- * @param {{ signalSource?: SignalSource; spawnProcess?: NativeSpawnProcess; platform?: string }} [options]
+ * @param {{ signalSource?: SignalSource; spawnProcess?: NativeSpawnProcess }} [options]
  * @returns {NativeSpawner}
  */
-function createNativeSpawner({
-	platform = process.platform,
-	signalSource = process,
-	spawnProcess = spawn,
-} = {}) {
-	const forwardedSignals = getForwardedSignals(platform);
+function createNativeSpawner({ signalSource = process, spawnProcess = spawn } = {}) {
+	/** @type {NodeJS.Signals[]} */
+	const forwardedSignals = ['SIGINT', 'SIGTERM', 'SIGHUP', 'SIGQUIT'];
 
 	return async (command, args) =>
 		new Promise((resolve) => {

@@ -38,13 +38,16 @@
       systems = [
         "x86_64-linux"
         "aarch64-linux"
-        "x86_64-darwin"
         "aarch64-darwin"
       ];
 
       imports = [
         inputs.treefmt-nix.flakeModule
         inputs.git-hooks.flakeModule
+        ./nix/configuration.nix
+        ./nix/javascript.nix
+        ./nix/workflow-checks.nix
+        ./nix/npm-packages.nix
         ./nix/treefmt.nix
         ./nix/git-hooks.nix
         ./nix/packages.nix

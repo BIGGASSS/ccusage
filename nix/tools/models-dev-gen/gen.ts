@@ -12,7 +12,7 @@
  * network access. The same pinned catalog also generates the Codex auto-review
  * fallback metadata used by the Rust parser and the selection rules the Rust
  * runtime loader applies to live models.dev responses. Run via
- * `just gen-models-dev-pricing` (see the sibling `default.nix`).
+ * `nix run .#generate-models-dev-pricing` (see the sibling `default.nix`).
  */
 import { generateCatalog } from './packages/core/src/generate.ts';
 import {

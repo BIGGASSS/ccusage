@@ -21,9 +21,17 @@
 		"config-schema.json",
 		"src/cli.js"
 	],
+	"os": [
+		"linux",
+		"darwin"
+	],
+	"cpu": [
+		"x64",
+		"arm64"
+	],
 	"type": "module",
 	"scripts": {
-		"build": "scripts/ensure-native-binary.nu && publint",
+		"build": "nu scripts/ensure-native-binary.nu && publint",
 		"prepack": "pnpm run build"
 	},
 	"devDependencies": {
@@ -33,8 +41,6 @@
 		"@ccusage/ccusage-darwin-arm64": "workspace:*",
 		"@ccusage/ccusage-darwin-x64": "workspace:*",
 		"@ccusage/ccusage-linux-arm64": "workspace:*",
-		"@ccusage/ccusage-linux-x64": "workspace:*",
-		"@ccusage/ccusage-win32-arm64": "workspace:*",
-		"@ccusage/ccusage-win32-x64": "workspace:*"
+		"@ccusage/ccusage-linux-x64": "workspace:*"
 	}
 }
