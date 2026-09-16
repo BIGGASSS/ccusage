@@ -51,7 +51,6 @@ in
             actionlint
             zizmor
             oxlint
-            prek
             gitleaks
             jq
             git
@@ -71,8 +70,7 @@ in
           ]
           ++ pkgs.lib.optionals pkgs.stdenv.isDarwin [
             pkgs.apple-sdk_15
-          ]
-          ++ config.pre-commit.settings.enabledPackages;
+          ];
 
         shellHook = ''
           if [ "$(uname -s)" = "Linux" ]; then
@@ -81,9 +79,6 @@ in
               *) export RUSTFLAGS="''${RUSTFLAGS:+$RUSTFLAGS }-C link-arg=-fuse-ld=mold" ;;
             esac
           fi
-
-          # Dependency installation is explicit: run `nix run .#js-install` as needed.
-          ${config.pre-commit.shellHook}
         '';
       };
     };

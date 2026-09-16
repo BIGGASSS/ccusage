@@ -18,8 +18,6 @@ in
         exclude = map nixFilter.matchName [
           ".git"
           ".direnv"
-          # git-hooks creates this ignored symlink into the local Nix store.
-          ".pre-commit-config.yaml"
           "node_modules"
           "target"
           "dist"

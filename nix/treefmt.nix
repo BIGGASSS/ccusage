@@ -28,7 +28,7 @@ in
         # Generate the schema into a temp file and only overwrite the tracked
         # files when the content actually differs. This keeps the formatter
         # idempotent: rewriting an unchanged file bumps its mtime, which
-        # `treefmt --fail-on-change` (pre-push) reports as a spurious change.
+        # `treefmt --fail-on-change` reports as a spurious change.
         text = ''
           tmp="$(mktemp --suffix=.json)"
           trap 'rm -f "$tmp"' EXIT

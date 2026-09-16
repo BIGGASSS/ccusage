@@ -49,7 +49,7 @@ nix build ".#checks.$system.js-typecheck"
 nix build ".#checks.$system.ccusage-tests" ".#checks.$system.node-tests" ".#checks.$system.performance-harness"
 ```
 
-For an interactive shell with the pinned tools, run `nix develop` (or `direnv allow` with nix-direnv configured).
+For an interactive shell with the pinned tools, run `nix develop` (or `direnv allow` with nix-direnv configured). The shell does not install Git hooks; formatting and checks run explicitly with the commands above or in CI.
 
 Neither entering the shell nor formatting or generating the schema installs JavaScript dependencies into your checkout. Hermetic builds use their own immutable inputs, not a local `node_modules`. Nix only includes Git-tracked files from a Git checkout: stage new source files with `git add` before building them (a commit is not required).
 
