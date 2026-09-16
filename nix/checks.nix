@@ -20,15 +20,7 @@ in
         ;
       nixFilter = inputs.nix-filter.lib;
       rustSrc = import ./rust-src.nix { inherit nixFilter root; };
-      repoSrc = nixFilter {
-        inherit root;
-        exclude = [
-          (nixFilter.matchName "node_modules")
-          (nixFilter.matchName "target")
-          (nixFilter.matchName "dist")
-          (nixFilter.matchName "coverage")
-        ];
-      };
+      mkRepoCheck = import ./mk-repo-check.nix { inherit pkgs nixFilter root; };
       ccusage-clippy = craneLib.cargoClippy (
         commonArgs
         // {
@@ -65,7 +57,7 @@ in
       };
       # Build the schema generator straight from the current Rust source so the
       # drift check below can never go stale: it always reflects whatever
-      # `rust/crates/ccusage/src/config_schema.rs` looks like right now.
+      # `rust/crates/ccusage-config/src/config_schema.rs` looks like right now.
       generateConfigSchema = config.packages.generate-config-schema;
       # Fail `nix flake check` when the committed config schema drifts from what
       # the Rust source generates. This catches PRs that add or change a config
@@ -74,20 +66,13 @@ in
       # apps/ccusage/config-schema.json is checked; docs/public/config-schema.json
       # is a gitignored build copy.
       config-schema =
-        pkgs.runCommand "config-schema-check"
-          {
-            src = repoSrc;
-            nativeBuildInputs = [
-              generateConfigSchema
-              pkgs.oxfmt
-              pkgs.diffutils
-            ];
-          }
+        mkRepoCheck "config-schema-check"
+          [
+            generateConfigSchema
+            pkgs.oxfmt
+            pkgs.diffutils
+          ]
           ''
-            cp -R "$src" source
-            chmod -R u+w source
-            cd source
-
             generate-config-schema generated.json
             oxfmt --write generated.json
 
@@ -96,8 +81,6 @@ in
               echo "Run 'nix run .#generate-schema' and commit the result." >&2
               exit 1
             fi
-
-            touch "$out"
           '';
       # Fail `nix flake check` when a tool's committed `bun.nix` no longer matches
       # what `bun2nix` derives from its `bun.lock`. Renovate bumps `bun.lock`
@@ -120,20 +103,6 @@ in
                 exit 1
               fi
             done
-          '';
-      mkRepoCheck =
-        name: nativeBuildInputs: command:
-        pkgs.runCommand name
-          {
-            src = repoSrc;
-            inherit nativeBuildInputs;
-          }
-          ''
-            cp -R "$src" source
-            chmod -R u+w source
-            cd source
-            ${command}
-            touch "$out"
           '';
     in
     {

@@ -59,8 +59,9 @@ function fixture(t) {
 	});
 	const calls = [];
 	const logs = [];
-	function publish(respond) {
+	function publish(respond, { manual = false } = {}) {
 		publishRelease(directory, directory, version, {
+			manual,
 			run(command, args, options) {
 				assert.equal(command, 'npm');
 				calls.push(args);
@@ -84,7 +85,7 @@ function fixture(t) {
 						'publish',
 						artifact.tarball,
 						'--ignore-scripts',
-						'--provenance',
+						manual ? '--provenance=false' : '--provenance',
 						'--access',
 						'public',
 						'--registry',
@@ -113,7 +114,7 @@ test('an entirely published release skips all five matching SHA512 integrities',
 	assert.equal(f.logs.length, 5);
 });
 
-test('only structured E404 publishes, with all native packages before the launcher', (t) => {
+test('only structured E404 publishes, with provenance and all native packages before the launcher', (t) => {
 	const f = fixture(t);
 	f.publish((command) => (command === 'view' ? missing : { status: 0 }));
 	assert.deepEqual(
@@ -125,6 +126,100 @@ test('only structured E404 publishes, with all native packages before the launch
 	);
 	assert.equal(f.logs.length, 0);
 });
+
+test('manual publishing explicitly disables provenance for every package', (t) => {
+	const f = fixture(t);
+	f.publish((command) => (command === 'view' ? missing : { status: 0 }), { manual: true });
+	assert.equal(f.calls.filter((args) => args[0] === 'publish').length, 5);
+});
+
+for (const manual of [false, true]) {
+	test(`CLI ${manual ? 'manual' : 'default'} mode passes the expected provenance flag`, (t) => {
+		const f = fixture(t);
+		const logPath = path.join(f.directory, 'npm-calls.jsonl');
+		// Use only this fake npm on PATH: never query the registry or publish real packages.
+		fs.writeFileSync(
+			path.join(f.directory, 'npm'),
+			`#!${process.execPath}
+const fs = require('node:fs');
+const args = process.argv.slice(2);
+fs.appendFileSync(${JSON.stringify(logPath)}, JSON.stringify(args) + '\\n');
+if (args[0] === 'view') {
+	console.log(JSON.stringify({ error: { code: 'E404' } }));
+	process.exitCode = 1;
+} else if (args[0] !== 'publish') {
+	throw new Error('unexpected npm command');
+}
+`,
+			{ mode: 0o755 },
+		);
+		execFileSync(
+			process.execPath,
+			[
+				path.join(__dirname, 'publish-release.cjs'),
+				...(manual ? ['--manual'] : []),
+				f.directory,
+				f.directory,
+				version,
+			],
+			{
+				env: {
+					...process.env,
+					PATH: f.directory,
+					npm_config_provenance: manual ? 'true' : 'false',
+				},
+				stdio: 'pipe',
+			},
+		);
+		const calls = fs.readFileSync(logPath, 'utf8').trim().split('\n').map(JSON.parse);
+		assert.deepEqual(
+			calls.filter((args) => args[0] === 'publish'),
+			f.artifacts.map((artifact) => [
+				'publish',
+				artifact.tarball,
+				'--ignore-scripts',
+				manual ? '--provenance=false' : '--provenance',
+				'--access',
+				'public',
+				'--registry',
+				registry,
+			]),
+		);
+	});
+}
+
+for (const args of [
+	[],
+	['--manual'],
+	['tarballs', 'manifests'],
+	['tarballs', 'manifests', version, 'extra'],
+	['--manual', 'tarballs', 'manifests'],
+	['--manual', 'tarballs', 'manifests', version, 'extra'],
+	['--unknown', 'tarballs', 'manifests', version],
+	['--unknown', 'manifests', version],
+	['--manual', '--manual', 'manifests', version],
+	['tarballs', '--manual', version],
+	['tarballs', 'manifests', '--manual'],
+	['tarballs', 'manifests', version, '--manual'],
+	['', 'manifests', version],
+	['--manual', 'tarballs', '', version],
+	['tarballs', 'manifests', ''],
+]) {
+	test(`CLI rejects invalid arguments before reading artifacts: ${JSON.stringify(args)}`, () => {
+		assert.throws(
+			() =>
+				execFileSync(process.execPath, [path.join(__dirname, 'publish-release.cjs'), ...args], {
+					env: { ...process.env, PATH: '' },
+					stdio: 'pipe',
+				}),
+			(error) => {
+				assert.equal(error.status, 1);
+				assert.match(error.stderr.toString(), /^usage: node publish-release\.cjs \[--manual\]/);
+				return true;
+			},
+		);
+	});
+}
 
 test('retry after partial success publishes only the remaining identical release artifacts', (t) => {
 	const f = fixture(t);

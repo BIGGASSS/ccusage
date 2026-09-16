@@ -38,7 +38,7 @@ function publishRelease(
 	directory,
 	manifestDirectory,
 	version,
-	{ run = spawnSync, log = console.log } = {},
+	{ manual = false, run = spawnSync, log = console.log } = {},
 ) {
 	// Always validate the entire release, even on retries where some (or all)
 	// versions already exist. Read/hash every local tarball before any network IO.
@@ -62,7 +62,7 @@ function publishRelease(
 				'publish',
 				tarball,
 				'--ignore-scripts',
-				'--provenance',
+				manual ? '--provenance=false' : '--provenance',
 				'--access',
 				'public',
 				'--registry',
@@ -79,9 +79,14 @@ function publishRelease(
 module.exports = { publishRelease };
 if (require.main === module) {
 	try {
-		if (process.argv.length !== 5)
-			throw new Error('expected tarball directory, manifest directory and release version');
-		publishRelease(...process.argv.slice(2));
+		const args = process.argv.slice(2);
+		const manual = args[0] === '--manual';
+		if (manual) args.shift();
+		if (args.length !== 3 || args.some((arg) => !arg || arg.startsWith('-')))
+			throw new Error(
+				'usage: node publish-release.cjs [--manual] <tarball-directory> <manifest-directory> <release-version>',
+			);
+		publishRelease(...args, { manual });
 	} catch (error) {
 		console.error(error.message);
 		process.exitCode = 1;

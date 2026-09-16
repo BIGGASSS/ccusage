@@ -84,6 +84,10 @@ in
         # Retain the pnpm workspace layout: its links are relative to the root.
         installPhase = ''
           runHook preInstall
+          # These pnpm install caches contain timestamps and a temporary store
+          # path. Consumers run the installed tools, never pnpm install against
+          # this tree, so retain the dependencies and links but not the caches.
+          rm node_modules/.modules.yaml node_modules/.pnpm-workspace-state-v1.json
           cp ${root + /apps/ccusage/config-schema.json} apps/ccusage/config-schema.json
           cp apps/ccusage/config-schema.json docs/public/config-schema.json
           cp -R ${modelsDevModules}/node_modules nix/tools/models-dev-gen/node_modules

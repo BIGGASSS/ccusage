@@ -17,31 +17,7 @@ in
     let
       rustToolchain = pkgs.rust-bin.fromRustupToolchainFile (root + /rust-toolchain.toml);
       generateConfigSchema = config.packages.generate-config-schema;
-      schemaGen = pkgs.writeShellApplication {
-        name = "ccusage-schema-gen";
-        runtimeInputs = [
-          pkgs.coreutils
-          pkgs.diffutils
-          pkgs.oxfmt
-          generateConfigSchema
-        ];
-        # Generate the schema into a temp file and only overwrite the tracked
-        # files when the content actually differs. This keeps the formatter
-        # idempotent: rewriting an unchanged file bumps its mtime, which
-        # `treefmt --fail-on-change` reports as a spurious change.
-        text = ''
-          tmp="$(mktemp --suffix=.json)"
-          trap 'rm -f "$tmp"' EXIT
-          generate-config-schema "$tmp"
-          oxfmt --write "$tmp"
-          if ! cmp -s "$tmp" apps/ccusage/config-schema.json; then
-            cp -f "$tmp" apps/ccusage/config-schema.json
-          fi
-          if [ -d docs/public ] && ! cmp -s apps/ccusage/config-schema.json docs/public/config-schema.json; then
-            cp -f apps/ccusage/config-schema.json docs/public/config-schema.json
-          fi
-        '';
-      };
+      schemaGen = pkgs.callPackage ./schema-gen.nix { inherit generateConfigSchema; };
       generateBunNix = pkgs.writeShellApplication {
         name = "generate-bun-nix";
         runtimeInputs = [

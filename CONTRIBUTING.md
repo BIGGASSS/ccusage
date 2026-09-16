@@ -133,6 +133,14 @@ Nix builds and validates the finished npm tarballs, with no networked install, l
 
 Release orchestration is deliberately outside the build sandbox. GitHub-hosted runners, checkout/artifact services, GitHub API access, and publishing credentials are external infrastructure, not supplied or made offline by Nix. `nix run .#tagpr` requires GitHub permissions; `nix run .#npm-publish -- /path/to/finished-tarballs` requires registry access and publishes the complete five-tarball set (four native packages plus the launcher).
 
-For GitHub OIDC publishing, configure an npm trusted publisher for **each** published package, matching this repository and `.github/workflows/release.yaml` (and an environment if configured). The publishing job needs `id-token: write`. Pinning npm does not configure registry trust or grant package ownership. Manual publishing instead requires appropriately scoped npm credentials; never commit them.
+For GitHub OIDC publishing, configure an npm trusted publisher for **each** published package, matching this repository and `.github/workflows/release.yaml` (and an environment if configured). The publishing job needs `id-token: write`. The default publishing mode requests npm provenance and requires supported CI. Pinning npm does not configure registry trust or grant package ownership.
+
+For a manual release outside CI, supply appropriately scoped npm credentials (never commit them) and explicitly disable provenance:
+
+```sh
+nix run .#npm-publish -- --manual /path/to/finished-tarballs
+```
+
+`--manual` passes `--provenance=false`, overriding npm provenance configuration. It still validates all five artifacts before registry access, skips only byte-identical published versions, and stops on any other error.
 
 Use the canonical `ccusage` command with agent subcommands (for example, `ccusage codex daily`). Update user-facing documentation when behavior changes. Never include credentials or private agent logs in a contribution.

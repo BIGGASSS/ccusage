@@ -13,33 +13,7 @@ in
     let
       inherit (pkgs) lib;
       nixFilter = inputs.nix-filter.lib;
-      repoSrc = nixFilter {
-        inherit root;
-        exclude = map nixFilter.matchName [
-          ".git"
-          ".direnv"
-          "node_modules"
-          "target"
-          "dist"
-          "coverage"
-        ];
-      };
-      mkRepoCheck =
-        name: nativeBuildInputs: command:
-        pkgs.runCommand name
-          {
-            src = repoSrc;
-            inherit nativeBuildInputs;
-          }
-          ''
-            cp -R "$src" source
-            chmod -R u+w source
-            cd source
-            export HOME="$TMPDIR/home"
-            mkdir -p "$HOME"
-            ${command}
-            touch "$out"
-          '';
+      mkRepoCheck = import ./mk-repo-check.nix { inherit pkgs nixFilter root; };
 
       rustToolchain = pkgs.rust-bin.fromRustupToolchainFile (root + /rust-toolchain.toml);
       craneLib = (inputs.crane.mkLib pkgs).overrideToolchain rustToolchain;
@@ -78,14 +52,10 @@ in
           fi
         }
       '';
+      schemaGen = pkgs.callPackage ./schema-gen.nix { inherit generateConfigSchema; };
       generateSchema = pkgs.writeShellApplication {
         name = "generate-schema";
-        runtimeInputs = [
-          generateConfigSchema
-          pkgs.coreutils
-          pkgs.diffutils
-          pkgs.oxfmt
-        ];
+        runtimeInputs = [ pkgs.coreutils ];
         text = ''
           ${requireCheckoutRoot}
           targets=(apps/ccusage/config-schema.json)
@@ -96,16 +66,7 @@ in
             requireWritableTarget "$target"
           done
 
-          tmp="$(mktemp --suffix=.json)"
-          trap 'rm -f "$tmp"' EXIT
-          generate-config-schema "$tmp"
-          oxfmt --config .oxfmtrc.json --write "$tmp"
-          for target in "''${targets[@]}"; do
-            # Avoid changing mtimes on an already up-to-date checkout.
-            if ! cmp -s "$tmp" "$target"; then
-              install -m 644 "$tmp" "$target"
-            fi
-          done
+          exec ${lib.getExe schemaGen}
         '';
       };
 

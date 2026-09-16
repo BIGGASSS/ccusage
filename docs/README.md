@@ -12,7 +12,7 @@ The Nix docs build copies `apps/ccusage/config-schema.json` into the site's `pub
 
 ## Prerequisites
 
-Install Nix with `nix-command` and `flakes` enabled. Supported systems are Linux and macOS on x86-64 and ARM64; native Windows is unsupported (use Linux in WSL). A cold run may fetch the locked tool and dependency closure; the site build itself runs offline in the Nix sandbox. See [CONTRIBUTING.md](../CONTRIBUTING.md) for setup, dependency updates, and the full network boundary.
+Install Nix with `nix-command` and `flakes` enabled. Supported development systems are Linux on x86-64 and ARM64, and macOS on Apple Silicon. Intel macOS npm releases are cross-built on Apple Silicon; this flake does not support native Intel Mac development. Native Windows is unsupported (use Linux in WSL). A cold run may fetch the locked tool and dependency closure; the site build itself runs offline in the Nix sandbox. See [CONTRIBUTING.md](../CONTRIBUTING.md) for setup, dependency updates, and the full network boundary.
 
 ## Commands
 

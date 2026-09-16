@@ -244,8 +244,13 @@ _: {
           pkgs.gzip
         ];
         text = ''
-          if [ "$#" -ne 1 ]; then
-            echo 'usage: nix run .#npm-publish -- <finished-tarball-directory>' >&2
+          mode=()
+          if [ "''${1-}" = '--manual' ]; then
+            mode=(--manual)
+            shift
+          fi
+          if [ "$#" -ne 1 ] || [ -z "''${1-}" ] || [[ "$1" == -* ]]; then
+            echo 'usage: nix run .#npm-publish -- [--manual] <finished-tarball-directory>' >&2
             exit 1
           fi
           artifacts="$(realpath "$1")"
@@ -261,10 +266,10 @@ _: {
           done
           cd "$tmp"
           # npm 11 supports GitHub OIDC trusted publishing directly, without
-          # setup-node or a token-bearing .npmrc. A caller may still supply its
-          # own npm credentials for a manual release. All registry IO is runtime
-          # only; the pinned helper skips only byte-identical published versions.
-          node ${publishScripts}/publish-release.cjs "$artifacts" "$tmp" '${version}'
+          # setup-node or a token-bearing .npmrc. --manual disables provenance
+          # for local publishing with the caller's own npm credentials. All registry
+          # IO is runtime only; the helper skips only byte-identical published versions.
+          node ${publishScripts}/publish-release.cjs "''${mode[@]}" "$artifacts" "$tmp" '${version}'
         '';
       };
     in
